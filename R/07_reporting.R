@@ -48,7 +48,6 @@ pem_plot_forest <- function(fit, path) {
       slab = labels,
       atransf = if (use_or) exp else NULL,
       xlab = if (use_or) "Odds ratio" else "Effect estimate",
-      addfit = FALSE,
       header = c("Study / sample", if (use_or) "OR [95% CI]" else "Estimate [95% CI]")
     )
   }
@@ -98,4 +97,3 @@ pem_write_run_note <- function(run_dir, config) {
   )
   writeLines(note, con = file.path(run_dir, "RUN_NOTE.txt"), useBytes = TRUE)
 }
-
