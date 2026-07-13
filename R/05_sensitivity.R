@@ -13,11 +13,13 @@ pem_rho_sensitivity <- function(data, config = pem_analysis_config(),
         pooling_block = block,
         rho = config$rho_grid,
         status = "not_applicable_single_effect_per_sample",
+        model_type = "rma.uni",
+        inference_method = "Hartung-Knapp",
         estimate = NA_real_,
-        se_cr2 = NA_real_,
-        ci_lb_cr2 = NA_real_,
-        ci_ub_cr2 = NA_real_,
-        p_cr2 = NA_real_,
+        se = NA_real_,
+        ci_lb = NA_real_,
+        ci_ub = NA_real_,
+        p = NA_real_,
         note = paste(
           "The frozen block contains one effect per Sample_ID; changing rho",
           "cannot change its diagonal sampling covariance matrix."
@@ -32,7 +34,7 @@ pem_rho_sensitivity <- function(data, config = pem_analysis_config(),
         block_data,
         rho = rho,
         min_samples = min_samples,
-        min_cr2_samples = config$min_cr2_samples
+        min_cr2_clusters = config$min_cr2_clusters
       )
       row <- pem_model_summary_row(fit)
       data.frame(
@@ -40,11 +42,13 @@ pem_rho_sensitivity <- function(data, config = pem_analysis_config(),
         pooling_block = row$pooling_block,
         rho = rho,
         status = row$status,
-        estimate = row$estimate,
-        se_cr2 = row$se_cr2,
-        ci_lb_cr2 = row$ci_lb_cr2,
-        ci_ub_cr2 = row$ci_ub_cr2,
-        p_cr2 = row$p_cr2,
+        model_type = row$model_type,
+        inference_method = row$inference_method,
+        estimate = row$primary_estimate,
+        se = row$primary_se,
+        ci_lb = row$primary_ci_lb,
+        ci_ub = row$primary_ci_ub,
+        p = row$primary_p,
         note = row$notes,
         stringsAsFactors = FALSE
       )
@@ -90,15 +94,9 @@ pem_leave_one_unit_out <- function(data, unit = c("sample_id", "report_id"),
         reduced,
         rho = config$primary_rho,
         min_samples = min_samples,
-        min_cr2_samples = config$min_cr2_samples
+        min_cr2_clusters = config$min_cr2_clusters
       )
       row <- pem_model_summary_row(fit)
-      preferred_lb <- ifelse(
-        is.finite(row$ci_lb_cr2), row$ci_lb_cr2, row$ci_lb_conventional
-      )
-      preferred_ub <- ifelse(
-        is.finite(row$ci_ub_cr2), row$ci_ub_cr2, row$ci_ub_conventional
-      )
 
       data.frame(
         stream = row$stream,
@@ -107,9 +105,11 @@ pem_leave_one_unit_out <- function(data, unit = c("sample_id", "report_id"),
         omitted_id = omitted,
         status = row$status,
         n_samples_remaining = row$n_samples,
-        estimate = row$estimate,
-        ci_lb = preferred_lb,
-        ci_ub = preferred_ub,
+        model_type = row$model_type,
+        inference_method = row$inference_method,
+        estimate = row$primary_estimate,
+        ci_lb = row$primary_ci_lb,
+        ci_ub = row$primary_ci_ub,
         note = row$notes,
         stringsAsFactors = FALSE
       )
@@ -225,15 +225,9 @@ pem_risk_of_bias_sensitivity <- function(
       reduced,
       rho = config$primary_rho,
       min_samples = min_samples,
-      min_cr2_samples = config$min_cr2_samples
+      min_cr2_clusters = config$min_cr2_clusters
     )
     row <- pem_model_summary_row(fit)
-    preferred_lb <- ifelse(
-      is.finite(row$ci_lb_cr2), row$ci_lb_cr2, row$ci_lb_conventional
-    )
-    preferred_ub <- ifelse(
-      is.finite(row$ci_ub_cr2), row$ci_ub_cr2, row$ci_ub_conventional
-    )
 
     output[[block]] <- data.frame(
       stream = row$stream,
@@ -242,9 +236,11 @@ pem_risk_of_bias_sensitivity <- function(
       n_samples_original = dplyr::n_distinct(block_data$sample_id),
       n_samples_included = row$n_samples,
       n_high_risk_excluded = n_high,
-      estimate = row$estimate,
-      ci_lb = preferred_lb,
-      ci_ub = preferred_ub,
+      model_type = row$model_type,
+      inference_method = row$inference_method,
+      estimate = row$primary_estimate,
+      ci_lb = row$primary_ci_lb,
+      ci_ub = row$primary_ci_ub,
       note = row$notes,
       stringsAsFactors = FALSE
     )

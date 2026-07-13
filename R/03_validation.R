@@ -32,8 +32,27 @@ pem_check_se_variance <- function(data, stream, tolerance = 1e-8) {
 }
 
 pem_audit_inputs <- function(raw, prepared, config = pem_analysis_config(),
-                             strict_freeze = TRUE) {
+                             strict_freeze = TRUE, workbook = NULL) {
   issues <- data.frame()
+
+  if (strict_freeze && !is.null(workbook)) {
+    observed_filename <- basename(normalizePath(
+      workbook,
+      winslash = "/",
+      mustWork = FALSE
+    ))
+    if (!identical(observed_filename, config$expected_workbook_filename)) {
+      issues <- pem_append_issue(
+        issues,
+        "error",
+        "frozen_workbook_filename",
+        detail = paste0(
+          "Expected input file '", config$expected_workbook_filename,
+          "'; observed '", observed_filename, "'."
+        )
+      )
+    }
+  }
 
   raw_counts <- c(
     logor = nrow(raw$logor),

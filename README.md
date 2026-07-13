@@ -2,7 +2,7 @@
 
 Reproducible R code for **Prediction Error and Human Episodic Memory: A Systematic Review and Multilevel Meta-analysis Across Memory Outcomes**.
 
-This repository contains the analysis pipeline only. It does not contain copyrighted PDFs or the extraction workbook. The code is aligned with OSF protocol v1.0, frozen on 13 July 2026, and with the current P1v2 analysis-data freeze.
+This repository contains the analysis pipeline only. It does not contain copyrighted PDFs or the extraction workbook. The code is aligned with OSF protocol v1.0, frozen on 13 July 2026, the unchanged P1v2 analysis-data freeze, and the dependence-aware `runP1v2.1` analysis specification.
 
 ## 当前分析边界
 
@@ -23,12 +23,32 @@ Experiment 1 `SMD_005` as `g_z`, and standardizes all 22 included RoB labels to
 remain in `Conditional_Effect_Queue_v2`; they are not assigned inferred point
 estimates and are not read into the primary models.
 
+P1v2 effect sizes are frozen. `runP1v2.1` changes the analysis method only:
+
+| Data structure within a compatible block | Model | Primary inference |
+|---|---|---|
+| One effect per independent sample, k >= 3 | `metafor::rma.uni(method = "REML", test = "knha")` | Hartung-Knapp |
+| Multiple correlated effects from a sample and at least 4 `Sample_ID` clusters | `metafor::rma.mv(method = "REML")` | CR2/Satterthwaite, clustered by `sample_id` |
+| Multiple correlated effects but fewer than 4 `Sample_ID` clusters | No pooled primary model | Individual effects only |
+| Fewer than 3 independent samples | No pooling | Individual effects only |
+
+The CR2 threshold is based on the number of independent `Sample_ID` clusters,
+not the total number of effects or reports. Because all 22 current P1v2 records
+are one-effect-per-sample, the current pooled blocks use `rma.uni()` plus
+Hartung-Knapp and do not use CR2.
+
+Current interpretation labels are explicit: `LOGOR_BINARY_CAT` is a small,
+preliminary cross-report synthesis; `LOGOR_ORDERED_ENDPOINT` and
+`LOGOR_RAW_URPE_POINT` are single-report syntheses that cannot support a
+cross-study conclusion; `PAIRED_GZ` is exploratory. All other k = 1 or k = 2
+blocks and the nonlinear k = 3 block remain descriptive only.
+
 ## 1. 准备数据
 
 Download the current Google Sheet as an Excel workbook and save it locally as:
 
 ```text
-data/raw/P1数据.xlsx
+data/raw/P1v2数据.xlsx
 ```
 
 The workbook must contain these tabs:
@@ -65,7 +85,7 @@ Or provide an explicit workbook and results directory from a terminal:
 
 ```bash
 Rscript analysis/run_analysis.R \
-  "data/raw/P1数据.xlsx" \
+  "data/raw/P1v2数据.xlsx" \
   results
 ```
 
@@ -76,7 +96,9 @@ Sys.setenv(PEM_WORKBOOK = "D:/your-folder/workbook.xlsx")
 source("analysis/run_analysis.R")
 ```
 
-The default `PEM_STRICT_FREEZE=true` enforces the P1v2 frozen 14 + 5 + 3 counts and the one-sample/one-primary-effect rule. Do not disable it for the confirmatory analysis unless the change is covered by a dated protocol amendment.
+The default `PEM_STRICT_FREEZE=true` enforces the filename `P1v2数据.xlsx`, the P1v2 frozen 14 + 5 + 3 counts, and the one-sample/one-primary-effect rule. Do not disable it for the confirmatory analysis unless the change is covered by a dated protocol amendment.
+
+Each successful run is written to `results/runP1v2.1_YYYYMMDD_HHMMSS/`.
 
 ## 4. 主要输出
 
@@ -84,10 +106,12 @@ Each run creates a timestamped folder under `results/` containing:
 
 - input audit and freeze checks;
 - block-readiness table;
-- conventional multilevel estimates;
-- CR2/Satterthwaite estimates when feasible;
+- the dependence-based model decision for every compatible block;
+- `rma.uni` REML estimates with Hartung-Knapp inference for the current pooled blocks;
+- `rma.mv` plus CR2/Satterthwaite only for future blocks with dependent effects and at least four `Sample_ID` clusters;
 - 95% confidence and prediction intervals;
-- variance components and I-squared-like decomposition;
+- heterogeneity estimates and I-squared-like decomposition;
+- a separate table of individual effects for every `descriptive_only` block;
 - rho-dependence sensitivity results when a sample contributes multiple compatible effects;
 - leave-one-sample-out and leave-one-report-out diagnostics;
 - low/some-concerns risk-of-bias sensitivity, once ratings are final and complete;
@@ -98,7 +122,8 @@ Blocks with too few compatible independent samples are explicitly labeled `descr
 
 ## Important safeguards
 
-- The registered random-effects structure is used when estimable. If the frozen input has one effect per sample, the algebraically redundant nested effect component is collapsed and documented rather than pretending that two heterogeneity components are identifiable.
+- One-effect-per-sample blocks fit one between-effect variance (`tau2`) with `rma.uni`; they do not simultaneously estimate `report_id` and `sample_id` random variances.
+- A k = 3 synthesis drawn entirely from one report is labeled `within_report` and cannot be reported as a cross-study conclusion.
 - `rho = .50` is the primary sampling-covariance assumption only when a sample contributes multiple compatible outcomes. Sensitivity values are `.00`, `.30`, `.70`, and `.90`.
 - Nonlinear synthesis requires at least five compatible independent samples.
 - Publication-bias analyses require at least ten compatible independent samples.

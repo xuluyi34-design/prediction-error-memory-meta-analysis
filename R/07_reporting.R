@@ -56,12 +56,54 @@ pem_plot_forest <- function(fit, path) {
   invisible(path)
 }
 
+pem_descriptive_effects <- function(fits) {
+  rows <- lapply(fits, function(fit) {
+    if (!identical(fit$status, "descriptive_only")) return(data.frame())
+
+    data <- fit$data
+    ci_lb <- data$yi_analysis - stats::qnorm(0.975) * sqrt(data$vi_analysis)
+    ci_ub <- data$yi_analysis + stats::qnorm(0.975) * sqrt(data$vi_analysis)
+    use_or <- identical(fit$stream, "logOR")
+
+    data.frame(
+      stream = fit$stream,
+      pooling_block = fit$block,
+      status = fit$status,
+      synthesis_scope = fit$synthesis_scope,
+      evidence_status = fit$evidence_status,
+      analysis_id = as.character(data$analysis_id %||% NA_character_),
+      study_id = as.character(data$study_id %||% NA_character_),
+      sample_id = as.character(data$sample_id),
+      report_id = as.character(data$report_id),
+      effect_id = as.character(data$effect_id_analysis),
+      estimate = as.numeric(data$yi_analysis),
+      se = sqrt(as.numeric(data$vi_analysis)),
+      ci_lb = ci_lb,
+      ci_ub = ci_ub,
+      estimate_display = if (use_or) exp(data$yi_analysis) else data$yi_analysis,
+      ci_lb_display = if (use_or) exp(ci_lb) else ci_lb,
+      ci_ub_display = if (use_or) exp(ci_ub) else ci_ub,
+      display_scale = if (use_or) "OR" else "coefficient",
+      interpretation = paste(fit$notes, collapse = " | "),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  pem_bind_rows(rows)
+}
+
 pem_write_model_outputs <- function(fits, run_dir) {
   model_dir <- pem_make_dir(file.path(run_dir, "models"))
   plot_dir <- pem_make_dir(file.path(run_dir, "plots"))
 
   summaries <- pem_model_summary(fits)
   pem_write_csv(summaries, file.path(model_dir, "model_summary.csv"))
+
+  descriptive <- pem_descriptive_effects(fits)
+  pem_write_csv(
+    descriptive,
+    file.path(model_dir, "descriptive_effects.csv")
+  )
 
   variance <- pem_bind_rows(lapply(fits, pem_variance_components))
   pem_write_csv(variance, file.path(model_dir, "variance_components.csv"))
@@ -85,16 +127,47 @@ pem_write_session_info <- function(run_dir) {
   invisible(path)
 }
 
-pem_write_run_note <- function(run_dir, config) {
+pem_write_run_note <- function(run_dir, config, workbook) {
   note <- c(
     config$project_title,
     paste0("Protocol version: ", config$protocol_version),
     paste0("Protocol freeze date: ", config$protocol_freeze_date),
     paste0("Analysis data version: ", config$analysis_data_version),
+    paste0("Analysis method/output version: ", config$analysis_method_version),
+    paste0("Input workbook: ", basename(workbook)),
+    paste0(
+      "Expected frozen counts: ",
+      config$expected_counts[["logor"]], " logOR + ",
+      config$expected_counts[["smd"]], " SMD + ",
+      config$expected_counts[["nonlinear"]], " nonlinear = ",
+      config$expected_total
+    ),
     paste0("Run completed: ", format(Sys.time(), tz = "UTC", usetz = TRUE)),
     "",
     "Interpret all outputs together with the audit tables and protocol.",
-    "A descriptive_only status means that no pooled estimate was forced."
+    "A descriptive_only status means that no pooled estimate was forced.",
+    paste(
+      "One effect per sample is analyzed with rma.uni REML plus Hartung-Knapp;",
+      "dependent effects require rma.mv plus CR2 clustered by Sample_ID."
+    )
   )
   writeLines(note, con = file.path(run_dir, "RUN_NOTE.txt"), useBytes = TRUE)
+}
+
+pem_write_run_metadata <- function(run_dir, config, workbook) {
+  metadata <- data.frame(
+    analysis_data_version = config$analysis_data_version,
+    analysis_method_version = config$analysis_method_version,
+    input_workbook = basename(workbook),
+    expected_logor = unname(config$expected_counts[["logor"]]),
+    expected_smd = unname(config$expected_counts[["smd"]]),
+    expected_nonlinear = unname(config$expected_counts[["nonlinear"]]),
+    expected_total = config$expected_total,
+    primary_one_effect_model = "rma.uni REML",
+    primary_one_effect_inference = "Hartung-Knapp",
+    dependent_effect_model = "rma.mv REML",
+    dependent_effect_inference = "CR2/Satterthwaite by sample_id",
+    stringsAsFactors = FALSE
+  )
+  pem_write_csv(metadata, file.path(run_dir, "run_metadata.csv"))
 }
