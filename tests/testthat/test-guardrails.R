@@ -17,3 +17,16 @@ testthat::test_that("equivalence is evaluated only on a defensible g scale", {
   testthat::expect_identical(result, "not_evaluated_outside_defensible_g_scale")
 })
 
+testthat::test_that("nonfinal risk labels do not trigger a restricted model", {
+  fixture <- pem_test_fixture()
+  fixture$prepared$logor$overall_risk <- "Unclear"
+  result <- pem_risk_of_bias_sensitivity(
+    fixture$prepared$logor,
+    fixture$config
+  )
+
+  testthat::expect_identical(
+    result$status[[1]],
+    "not_run_incomplete_or_nonfinal_risk_ratings"
+  )
+})

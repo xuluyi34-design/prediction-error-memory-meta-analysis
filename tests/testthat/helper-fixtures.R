@@ -13,6 +13,13 @@ pem_test_fixture <- function() {
   )
   names(sample_map) <- pem_normalise_names(names(sample_map))
 
+  risk_of_bias <- data.frame(
+    Study_ID = c("ST001", "ST002", "ST003"),
+    Overall_Risk = rep("Some concerns", 3),
+    stringsAsFactors = FALSE
+  )
+  names(risk_of_bias) <- pem_normalise_names(names(risk_of_bias))
+
   logor <- data.frame(
     analysis_id = "LOGOR_T01",
     freeze_id = "FZ001",
@@ -72,6 +79,7 @@ pem_test_fixture <- function() {
 
   raw <- list(
     sample_map = sample_map,
+    risk_of_bias = risk_of_bias,
     logor = logor,
     smd = smd,
     nonlinear = nonlinear
@@ -83,4 +91,3 @@ pem_test_fixture <- function() {
     prepared = pem_prepare_inputs(raw, config)
   )
 }
-

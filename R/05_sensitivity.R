@@ -155,6 +155,104 @@ pem_equivalence_classification <- function(ci_lb, ci_ub, metric,
   }
 }
 
+pem_canonical_risk <- function(x) {
+  value <- tolower(trimws(as.character(x)))
+  out <- rep(NA_character_, length(value))
+  out[grepl("^low( risk)?$", value)] <- "low"
+  out[grepl("^some concerns$", value)] <- "some_concerns"
+  out[grepl("^high( risk)?$", value)] <- "high"
+  out[grepl("^not applicable$|^n/a$", value)] <- "not_applicable"
+  out
+}
+
+pem_risk_of_bias_sensitivity <- function(
+    data,
+    config = pem_analysis_config(),
+    min_samples = config$min_quantitative_samples) {
+  split_data <- split(data, data$pooling_block, drop = TRUE)
+  output <- list()
+
+  for (block in names(split_data)) {
+    block_data <- split_data[[block]] |>
+      dplyr::mutate(risk_canonical = pem_canonical_risk(.data$overall_risk))
+
+    unresolved <- is.na(block_data$risk_canonical)
+    if (any(unresolved)) {
+      output[[block]] <- data.frame(
+        stream = unique(block_data$stream),
+        pooling_block = block,
+        status = "not_run_incomplete_or_nonfinal_risk_ratings",
+        n_samples_original = dplyr::n_distinct(block_data$sample_id),
+        n_samples_included = NA_integer_,
+        n_high_risk_excluded = NA_integer_,
+        estimate = NA_real_,
+        ci_lb = NA_real_,
+        ci_ub = NA_real_,
+        note = paste0(
+          "Unresolved Overall_Risk values: ",
+          paste(unique(block_data$overall_risk[unresolved]), collapse = "; "),
+          ". Finalize ratings before this sensitivity analysis."
+        ),
+        stringsAsFactors = FALSE
+      )
+      next
+    }
+
+    keep <- block_data$risk_canonical %in% c("low", "some_concerns")
+    reduced <- block_data[keep, , drop = FALSE]
+    n_high <- dplyr::n_distinct(
+      as.character(block_data$sample_id[block_data$risk_canonical == "high"])
+    )
+
+    if (nrow(reduced) == 0L) {
+      output[[block]] <- data.frame(
+        stream = unique(block_data$stream),
+        pooling_block = block,
+        status = "no_low_or_some_concerns_effects",
+        n_samples_original = dplyr::n_distinct(block_data$sample_id),
+        n_samples_included = 0L,
+        n_high_risk_excluded = n_high,
+        estimate = NA_real_,
+        ci_lb = NA_real_,
+        ci_ub = NA_real_,
+        note = "No effects remained after the prespecified risk restriction.",
+        stringsAsFactors = FALSE
+      )
+      next
+    }
+
+    fit <- pem_fit_block(
+      reduced,
+      rho = config$primary_rho,
+      min_samples = min_samples,
+      min_cr2_samples = config$min_cr2_samples
+    )
+    row <- pem_model_summary_row(fit)
+    preferred_lb <- ifelse(
+      is.finite(row$ci_lb_cr2), row$ci_lb_cr2, row$ci_lb_conventional
+    )
+    preferred_ub <- ifelse(
+      is.finite(row$ci_ub_cr2), row$ci_ub_cr2, row$ci_ub_conventional
+    )
+
+    output[[block]] <- data.frame(
+      stream = row$stream,
+      pooling_block = row$pooling_block,
+      status = row$status,
+      n_samples_original = dplyr::n_distinct(block_data$sample_id),
+      n_samples_included = row$n_samples,
+      n_high_risk_excluded = n_high,
+      estimate = row$estimate,
+      ci_lb = preferred_lb,
+      ci_ub = preferred_ub,
+      note = row$notes,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  dplyr::bind_rows(output)
+}
+
 pem_fit_moderator <- function(...) {
   config <- pem_analysis_config()
   if (!config$moderator_thresholds_frozen) {
@@ -165,4 +263,3 @@ pem_fit_moderator <- function(...) {
   }
   pem_abort("Moderator thresholds are marked frozen but no implementation is configured.")
 }
-

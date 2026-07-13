@@ -78,6 +78,7 @@ Each run creates a timestamped folder under `results/` containing:
 - variance components and I-squared-like decomposition;
 - rho-dependence sensitivity results when a sample contributes multiple compatible effects;
 - leave-one-sample-out and leave-one-report-out diagnostics;
+- low/some-concerns risk-of-bias sensitivity, once ratings are final and complete;
 - publication-bias eligibility checks;
 - forest plots, model objects, and `sessionInfo()`.
 
@@ -93,4 +94,3 @@ Blocks with too few compatible independent samples are explicitly labeled `descr
 - No automatic fallback to a simpler substantive model occurs after a registered model fails. Failures and warnings are written to the audit output.
 
 More detail is recorded in [docs/analysis_contract.md](docs/analysis_contract.md).
-

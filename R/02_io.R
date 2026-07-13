@@ -19,10 +19,30 @@ pem_read_sheet <- function(workbook, sheet, skip = 1L) {
 pem_load_inputs <- function(workbook, config = pem_analysis_config()) {
   list(
     sample_map = pem_read_sheet(workbook, config$sheets$sample_map),
+    risk_of_bias = pem_read_sheet(
+      workbook,
+      config$sheets$risk_of_bias,
+      skip = 0L
+    ),
     logor = pem_read_sheet(workbook, config$sheets$logor),
     smd = pem_read_sheet(workbook, config$sheets$smd),
     nonlinear = pem_read_sheet(workbook, config$sheets$nonlinear)
   )
+}
+
+pem_risk_map <- function(risk_of_bias) {
+  pem_require_columns(
+    risk_of_bias,
+    c("study_id", "overall_risk"),
+    "Risk_of_Bias"
+  )
+
+  risk_of_bias |>
+    dplyr::transmute(
+      study_id = as.character(.data$study_id),
+      overall_risk = as.character(.data$overall_risk)
+    ) |>
+    dplyr::distinct()
 }
 
 pem_sample_report_map <- function(sample_map) {
@@ -165,10 +185,15 @@ pem_prepare_nonlinear <- function(data, sample_map) {
 }
 
 pem_prepare_inputs <- function(raw, config = pem_analysis_config()) {
-  list(
+  prepared <- list(
     logor = pem_prepare_logor(raw$logor, raw$sample_map, config),
     smd = pem_prepare_smd(raw$smd, raw$sample_map),
     nonlinear = pem_prepare_nonlinear(raw$nonlinear, raw$sample_map)
   )
-}
 
+  risk <- pem_risk_map(raw$risk_of_bias)
+  lapply(
+    prepared,
+    function(data) dplyr::left_join(data, risk, by = "study_id")
+  )
+}

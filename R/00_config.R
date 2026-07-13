@@ -8,6 +8,7 @@ pem_analysis_config <- function() {
     protocol_freeze_date = as.Date("2026-07-13"),
     sheets = list(
       sample_map = "Study_Sample_Map",
+      risk_of_bias = "Risk_of_Bias",
       logor = "MAI_LogOR_v1",
       smd = "MAI_SMD_v1",
       nonlinear = "MAI_Nonlinear_v1"
@@ -34,4 +35,3 @@ pem_analysis_config <- function() {
     )
   )
 }
-

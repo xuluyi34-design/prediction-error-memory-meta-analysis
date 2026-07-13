@@ -226,6 +226,21 @@ pem_audit_inputs <- function(raw, prepared, config = pem_analysis_config(),
     )
   }
 
+  missing_risk <- is.na(prepared_all$overall_risk) |
+    !nzchar(trimws(prepared_all$overall_risk))
+  if (any(missing_risk)) {
+    issues <- pem_append_issue(
+      issues,
+      "warning",
+      "risk_of_bias_mapping",
+      detail = paste0(
+        sum(missing_risk),
+        " primary row(s) lack a mapped Overall_Risk judgment; risk-restricted ",
+        "sensitivity analysis will remain disabled for affected blocks."
+      )
+    )
+  }
+
   if (!config$moderator_thresholds_frozen) {
     issues <- pem_append_issue(
       issues,
@@ -300,4 +315,3 @@ pem_stop_on_audit_error <- function(audit) {
     " fatal issue(s). Inspect results/audit_issues.csv before modeling."
   ))
 }
-

@@ -35,6 +35,8 @@ Observed covariance is preferred. When compatible effects from one sample lack c
 
 The pipeline implements leave-one-independent-sample-out and leave-one-report-out checks when the remaining data still meet the quantitative minimum. It does not treat robust variance estimation as a substitute for correct overlap coding.
 
+The risk-of-bias sensitivity retains only finalized `Low`/`Low risk` and `Some concerns` judgments. If a compatible block still contains `Unclear`, mixed, missing, or otherwise nonfinal labels, the restricted model is not run and the unresolved labels are reported.
+
 ## Thresholds and disabled analyses
 
 - General block synthesis requires at least 3 compatible independent samples in the current code skeleton.
@@ -46,4 +48,3 @@ The pipeline implements leave-one-independent-sample-out and leave-one-report-ou
 ## Interpretation
 
 Conclusions must integrate effect magnitude, uncertainty, prediction intervals, heterogeneity, independent-sample count, risk of bias, and robustness. Nonsignificance is not evidence of no effect. The prespecified practically trivial interval is Hedges' g from -0.10 to +0.10 and is applied only on a defensible g scale.
-

@@ -87,6 +87,20 @@ pem_run_analysis <- function(workbook,
     file.path(sensitivity_dir, "leave_one_report_out.csv")
   )
 
+  risk_sensitivity <- dplyr::bind_rows(
+    pem_risk_of_bias_sensitivity(prepared$logor, config),
+    pem_risk_of_bias_sensitivity(prepared$smd, config),
+    pem_risk_of_bias_sensitivity(
+      prepared$nonlinear,
+      config,
+      min_samples = config$min_nonlinear_samples
+    )
+  )
+  pem_write_csv(
+    risk_sensitivity,
+    file.path(sensitivity_dir, "risk_of_bias_sensitivity.csv")
+  )
+
   all_prepared <- dplyr::bind_rows(prepared)
   publication_bias <- pem_publication_bias_eligibility(all_prepared, config)
   pem_write_csv(
@@ -123,7 +137,7 @@ pem_run_analysis <- function(workbook,
     rho_sensitivity = rho_sensitivity,
     leave_one_sample_out = leave_sample,
     leave_one_report_out = leave_report,
+    risk_of_bias_sensitivity = risk_sensitivity,
     publication_bias_eligibility = publication_bias
   ))
 }
-
