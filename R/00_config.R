@@ -6,6 +6,7 @@ pem_analysis_config <- function() {
     ),
     protocol_version = "1.0",
     protocol_freeze_date = as.Date("2026-07-13"),
+    analysis_data_version = "P1v2",
     sheets = list(
       sample_map = "Study_Sample_Map",
       risk_of_bias = "Risk_of_Bias",
@@ -13,8 +14,8 @@ pem_analysis_config <- function() {
       smd = "MAI_SMD_v1",
       nonlinear = "MAI_Nonlinear_v1"
     ),
-    expected_counts = c(logor = 14L, smd = 5L, nonlinear = 2L),
-    expected_total = 21L,
+    expected_counts = c(logor = 14L, smd = 5L, nonlinear = 3L),
+    expected_total = 22L,
     primary_rho = 0.50,
     rho_grid = c(0.00, 0.30, 0.50, 0.70, 0.90),
     min_quantitative_samples = 3L,
