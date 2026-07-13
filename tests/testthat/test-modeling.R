@@ -63,7 +63,7 @@ testthat::test_that("a one-report k=3 synthesis is explicitly limited", {
   testthat::expect_identical(fit$status, "model_fitted")
   testthat::expect_identical(fit$synthesis_scope, "within_report")
   testthat::expect_identical(fit$evidence_status, "within_report_only")
-  testthat::expect_true(any(grepl("not a cross-study", fit$notes)))
+  testthat::expect_true(any(grepl("cross-study conclusion", fit$notes)))
 })
 
 testthat::test_that("dependent effects require four Sample_ID clusters for CR2", {
