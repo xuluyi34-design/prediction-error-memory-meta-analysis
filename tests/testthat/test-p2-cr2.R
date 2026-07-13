@@ -1,5 +1,15 @@
 extract_p2_function <- function(name) {
-  expressions <- parse(file = file.path("analysis", "P2_analysis_v1.R"))
+  current <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+  repeat {
+    script_path <- file.path(current, "analysis", "P2_analysis_v1.R")
+    if (file.exists(script_path)) break
+    parent <- dirname(current)
+    if (identical(parent, current)) {
+      stop("Could not locate analysis/P2_analysis_v1.R from the test directory.")
+    }
+    current <- parent
+  }
+  expressions <- parse(file = script_path)
   matches <- vapply(
     expressions,
     function(expr) {
