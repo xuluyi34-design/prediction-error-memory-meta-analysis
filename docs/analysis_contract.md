@@ -5,8 +5,22 @@
 - Project: *Prediction Error and Human Episodic Memory: A Systematic Review and Multilevel Meta-analysis Across Memory Outcomes*
 - OSF protocol: version 1.0, finalized 13 July 2026
 - Frozen primary-effect source: `Primary_Effect_Set_v1`
-- Current analysis index: `Meta_Analysis_Input_v1`
-- Frozen baseline: 14 native log-odds effects, 5 standardized effects, and 2 nonlinear records
+- Current analysis data freeze: `P1v2`
+- Current analysis sheets: `MAI_LogOR_v1`, `MAI_SMD_v1`, and `MAI_Nonlinear_v1`
+- Frozen baseline: 14 native log-odds effects, 5 standardized effects, and 3 nonlinear records (22 independent primary samples)
+
+## P1v2 corrections and boundaries
+
+- A011 Experiment 2A is included as a nonlinear primary record: N = 22,
+  1,696 trials, quadratic beta = .04, SE = .10, with a logit link.
+- `SMD_005` from A031 Experiment 1 is confirmed as `g_z` and is no longer
+  provisional.
+- All 22 included primary samples use the finalized `Some concerns` risk-of-bias
+  label.
+- A011 Experiment 2B, A013 Experiment 2, and A031 Experiment 2 remain in
+  `Conditional_Effect_Queue_v2` because reliable exact estimates are not yet
+  available. Queue records are not read into the primary analysis, and no
+  inferred values are substituted as point estimates.
 
 ## Estimand separation
 
@@ -26,8 +40,10 @@ If every sample contributes exactly one effect, `Sample_ID` and the nested `Effe
 - `LOGOR_NATIVE_SRPE` retains the native centered signed-RPE unit.
 - `LOGOR_SIGNED_FULLRANGE` uses endpoint columns for the full -1 to +1 signed-PE range.
 - `LOGOR_RAW_URPE_POINT` retains one raw absolute-RPE point as its unit.
-- SMD pooling follows the exact `pooling_block`; provisional blocks are not silently merged.
-- `NONLINEAR_QUADRATIC` uses `beta_quadratic` and `vi_quadratic`; k must be at least 5 for synthesis.
+- SMD pooling follows the exact `pooling_block`; `SMD_005` is treated as confirmed
+  `g_z`, while any genuinely provisional blocks remain isolated.
+- `NONLINEAR_QUADRATIC` uses `beta_quadratic` and `vi_quadratic`; P1v2 contains
+  three records, and k must be at least 5 for synthesis.
 
 ## Dependence and sensitivity
 
