@@ -21,12 +21,13 @@ The three streams are never concatenated into one unqualified model. Positive ef
 Download the current Google Sheet as an Excel workbook and save it locally as:
 
 ```text
-data/raw/prediction_error_memory_calculation_ready.xlsx
+data/raw/P1数据.xlsx
 ```
 
 The workbook must contain these tabs:
 
 - `Study_Sample_Map`
+- `Risk_of_Bias`
 - `MAI_LogOR_v1`
 - `MAI_SMD_v1`
 - `MAI_Nonlinear_v1`
@@ -41,6 +42,10 @@ Open the repository as an RStudio project or set the working directory to the re
 source("analysis/install_packages.R")
 ```
 
+On Windows, the installer uses the official CRAN CDN and binary packages to
+avoid stale or blocked mirrors. Set `PEM_CRAN_REPO` only when an explicit CRAN
+mirror override is needed.
+
 ## 3. 运行全部分析
 
 The simplest route is:
@@ -53,7 +58,7 @@ Or provide an explicit workbook and results directory from a terminal:
 
 ```bash
 Rscript analysis/run_analysis.R \
-  data/raw/prediction_error_memory_calculation_ready.xlsx \
+  "data/raw/P1数据.xlsx" \
   results
 ```
 
