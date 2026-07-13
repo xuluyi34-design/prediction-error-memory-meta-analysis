@@ -25,21 +25,13 @@ r_files <- sort(list.files(
 invisible(lapply(r_files, source, local = .GlobalEnv))
 
 args <- commandArgs(trailingOnly = TRUE)
-default_workbooks <- c(
-  file.path(project_root, "data", "raw", "P1数据.xlsx"),
-  file.path(
-    project_root,
-    "data",
-    "raw",
-    "prediction_error_memory_calculation_ready.xlsx"
-  )
+config <- pem_analysis_config()
+default_workbook <- file.path(
+  project_root,
+  "data",
+  "raw",
+  config$expected_workbook_filename
 )
-available_default <- default_workbooks[file.exists(default_workbooks)]
-default_workbook <- if (length(available_default) > 0L) {
-  available_default[[1]]
-} else {
-  default_workbooks[[1]]
-}
 workbook <- if (length(args) >= 1L) {
   args[[1]]
 } else {
@@ -57,5 +49,6 @@ strict_freeze <- !strict_value %in% c("false", "0", "no")
 pem_run_analysis(
   workbook = workbook,
   output_root = output_root,
-  strict_freeze = strict_freeze
+  strict_freeze = strict_freeze,
+  config = config
 )

@@ -47,3 +47,18 @@ testthat::test_that("variance values inconsistent with SE squared are rejected",
   testthat::expect_true(any(audit$issues$check == "vi_equals_se_squared"))
 })
 
+testthat::test_that("strict run requires the P1v2 workbook filename", {
+  fixture <- pem_test_fixture()
+  audit <- pem_audit_inputs(
+    fixture$raw,
+    fixture$prepared,
+    fixture$config,
+    strict_freeze = TRUE,
+    workbook = "P1数据.xlsx"
+  )
+
+  testthat::expect_false(audit$passed)
+  testthat::expect_true(
+    any(audit$issues$check == "frozen_workbook_filename")
+  )
+})

@@ -5,7 +5,10 @@ pem_run_analysis <- function(workbook,
                              config = pem_analysis_config()) {
   pem_check_dependencies(config)
 
-  run_dir <- pem_make_dir(file.path(output_root, paste0("run_", run_id)))
+  run_dir <- pem_make_dir(file.path(
+    output_root,
+    paste0(config$analysis_method_version, "_", run_id)
+  ))
   message("Reading frozen analysis inputs...")
   raw <- pem_load_inputs(workbook, config)
   prepared <- pem_prepare_inputs(raw, config)
@@ -15,15 +18,28 @@ pem_run_analysis <- function(workbook,
     raw = raw,
     prepared = prepared,
     config = config,
-    strict_freeze = strict_freeze
+    strict_freeze = strict_freeze,
+    workbook = workbook
   )
   pem_write_audit(audit, run_dir, workbook)
   pem_stop_on_audit_error(audit)
 
   readiness <- dplyr::bind_rows(
-    pem_block_readiness(prepared$logor, config$min_quantitative_samples),
-    pem_block_readiness(prepared$smd, config$min_quantitative_samples),
-    pem_block_readiness(prepared$nonlinear, config$min_nonlinear_samples)
+    pem_block_readiness(
+      prepared$logor,
+      config$min_quantitative_samples,
+      config$min_cr2_clusters
+    ),
+    pem_block_readiness(
+      prepared$smd,
+      config$min_quantitative_samples,
+      config$min_cr2_clusters
+    ),
+    pem_block_readiness(
+      prepared$nonlinear,
+      config$min_nonlinear_samples,
+      config$min_cr2_clusters
+    )
   )
   pem_write_csv(readiness, file.path(run_dir, "block_readiness.csv"))
 
@@ -117,7 +133,8 @@ pem_run_analysis <- function(workbook,
   )
 
   pem_write_session_info(run_dir)
-  pem_write_run_note(run_dir, config)
+  pem_write_run_note(run_dir, config, workbook)
+  pem_write_run_metadata(run_dir, config, workbook)
   writeLines(
     normalizePath(run_dir, winslash = "/", mustWork = TRUE),
     con = file.path(output_root, "latest_run.txt"),

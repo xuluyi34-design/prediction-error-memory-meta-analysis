@@ -7,6 +7,8 @@ pem_analysis_config <- function() {
     protocol_version = "1.0",
     protocol_freeze_date = as.Date("2026-07-13"),
     analysis_data_version = "P1v2",
+    analysis_method_version = "runP1v2.1",
+    expected_workbook_filename = "P1v2数据.xlsx",
     sheets = list(
       sample_map = "Study_Sample_Map",
       risk_of_bias = "Risk_of_Bias",
@@ -19,7 +21,7 @@ pem_analysis_config <- function() {
     primary_rho = 0.50,
     rho_grid = c(0.00, 0.30, 0.50, 0.70, 0.90),
     min_quantitative_samples = 3L,
-    min_cr2_samples = 4L,
+    min_cr2_clusters = 4L,
     min_nonlinear_samples = 5L,
     min_publication_bias_samples = 10L,
     equivalence_bounds_g = c(-0.10, 0.10),

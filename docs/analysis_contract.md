@@ -6,6 +6,8 @@
 - OSF protocol: version 1.0, finalized 13 July 2026
 - Frozen primary-effect source: `Primary_Effect_Set_v1`
 - Current analysis data freeze: `P1v2`
+- Current analysis method/output version: `runP1v2.1`
+- Required strict-run workbook filename: `P1v2数据.xlsx`
 - Current analysis sheets: `MAI_LogOR_v1`, `MAI_SMD_v1`, and `MAI_Nonlinear_v1`
 - Frozen baseline: 14 native log-odds effects, 5 standardized effects, and 3 nonlinear records (22 independent primary samples)
 
@@ -26,11 +28,30 @@
 
 The pipeline preserves three nonexchangeable analysis streams. Within the log-odds stream it also preserves `pooling_block`, because coefficients with different predictor units do not become exchangeable merely by sharing a logit link. Within the SMD stream, denominator definitions remain visible and provisional harmonization flags are honored. Quadratic coefficients are never combined with linear coefficients without their covariance.
 
-## Registered model
+## runP1v2.1 dependence-aware model selection
 
-For each compatible effect family, the protocol specifies a REML multilevel random-effects model. Sampling dependence is represented in `V`. `Report_ID` and `Sample_ID` are crossed random-intercept components, with `Effect_ID` nested within `Sample_ID` when that component is identifiable. Primary robust inference uses CR2 standard errors and Satterthwaite small-sample tests clustered at `Sample_ID` when feasible.
+P1v2 effect estimates and variances remain frozen. `runP1v2.1` changes only the
+model and small-sample inference implementation:
 
-If every sample contributes exactly one effect, `Sample_ID` and the nested `Effect_ID` heterogeneity components are algebraically indistinguishable. The implementation therefore fits a single sample-level component in that case and records the reason. This is an estimability adjustment, not an unreported change in the substantive estimand.
+- If every independent sample contributes exactly one compatible effect and
+  there are at least three samples, fit `metafor::rma.uni()` by REML with
+  `test = "knha"`. This estimates one between-effect variance and uses
+  Hartung-Knapp inference. It does not attempt separate `Report_ID` and
+  `Sample_ID` random variances.
+- If at least one sample contributes multiple correlated effects, use a
+  sampling covariance matrix and `metafor::rma.mv()`. Primary inference then
+  uses `clubSandwich::coef_test(..., vcov = "CR2", cluster = sample_id)`.
+- The CR2 eligibility threshold is at least four distinct `Sample_ID` clusters.
+  It is not based on total effect count. `Report_ID` is not substituted as the
+  cluster variable.
+- If a dependent-effect block has fewer than four independent sample clusters,
+  no CR2 primary inference or pooled primary conclusion is produced.
+- If a compatible block has fewer than three independent samples, it is not
+  pooled.
+
+All current P1v2 blocks contain one effect per sample, so any eligible current
+block uses `rma.uni()` plus Hartung-Knapp; CR2 is not part of the P1v2.1 primary
+results.
 
 ## Current block rules
 
@@ -45,6 +66,21 @@ If every sample contributes exactly one effect, `Sample_ID` and the nested `Effe
 - `NONLINEAR_QUADRATIC` uses `beta_quadratic` and `vi_quadratic`; P1v2 contains
   three records, and k must be at least 5 for synthesis.
 
+For the current P1v2 block composition:
+
+- `LOGOR_BINARY_CAT` is pooled by single-level REML plus Hartung-Knapp and is
+  labeled preliminary cross-report evidence (four samples, three reports).
+- `LOGOR_ORDERED_ENDPOINT` is pooled by single-level REML plus Hartung-Knapp
+  and labeled a single-report synthesis across three age samples, not a
+  cross-study conclusion.
+- `LOGOR_RAW_URPE_POINT` is pooled by single-level REML plus Hartung-Knapp and
+  labeled a single-report synthesis across three experiments, not a
+  cross-study conclusion.
+- `PAIRED_GZ` is pooled by single-level REML plus Hartung-Knapp and labeled
+  exploratory.
+- Other k = 1 or k = 2 blocks remain `descriptive_only`.
+- The nonlinear k = 3 block remains `descriptive_only` under its k >= 5 rule.
+
 ## Dependence and sensitivity
 
 Observed covariance is preferred. When compatible effects from one sample lack covariance information, the primary working value is rho = .50, with .00, .30, .70, and .90 sensitivity analyses. If there is only one effect per sample, rho is inapplicable and the pipeline reports that fact rather than producing five cosmetically identical analyses.
@@ -55,8 +91,10 @@ The risk-of-bias sensitivity retains only finalized `Low`/`Low risk` and `Some c
 
 ## Thresholds and disabled analyses
 
-- General block synthesis requires at least 3 compatible independent samples in the current code skeleton.
-- CR2 is attempted with at least 4 independent samples and is still reported with its Satterthwaite degrees of freedom.
+- General block synthesis requires at least 3 compatible independent samples.
+- CR2 applies only to dependent-effect multilevel models with at least 4
+  distinct `Sample_ID` clusters and is reported with Satterthwaite degrees of
+  freedom.
 - Nonlinear synthesis requires at least 5 independent samples.
 - Publication-bias analysis requires at least 10 independent samples.
 - Moderator thresholds were not numerically specified in the finalized text available to the code generator. Moderator fitting is therefore disabled until those rules are frozen or amended explicitly.
