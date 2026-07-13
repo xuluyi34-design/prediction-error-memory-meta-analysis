@@ -6,7 +6,8 @@ testthat::test_that("sampling V is diagonal with one effect per sample", {
   )
 
   V <- pem_build_sampling_v(data, rho = 0.50)
-  testthat::expect_equal(as.matrix(V), diag(c(0.01, 0.04)))
+  V_numeric <- matrix(as.numeric(V), nrow = nrow(data))
+  testthat::expect_equal(V_numeric, diag(c(0.01, 0.04)))
 })
 
 testthat::test_that("one-effect-per-sample structure is collapsed transparently", {
@@ -40,4 +41,3 @@ testthat::test_that("an eligible synthetic block returns a model result", {
   testthat::expect_identical(fit$status, "model_fitted")
   testthat::expect_true(is.finite(summary$estimate))
 })
-
