@@ -90,6 +90,7 @@ pem_write_run_note <- function(run_dir, config) {
     config$project_title,
     paste0("Protocol version: ", config$protocol_version),
     paste0("Protocol freeze date: ", config$protocol_freeze_date),
+    paste0("Analysis data version: ", config$analysis_data_version),
     paste0("Run completed: ", format(Sys.time(), tz = "UTC", usetz = TRUE)),
     "",
     "Interpret all outputs together with the audit tables and protocol.",
