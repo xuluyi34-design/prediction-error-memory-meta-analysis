@@ -297,12 +297,11 @@ pem_audit_inputs <- function(raw, prepared, config = pem_analysis_config(),
     summary = summary,
     block_manifest = block_manifest,
     analysis_manifest = prepared_all |>
-      dplyr::select(
-        .data$stream, .data$analysis_id, .data$freeze_id, .data$study_id,
-        .data$sample_id, .data$report_id, .data$effect_id_analysis,
-        .data$pooling_block, .data$yi_analysis, .data$vi_analysis,
-        .data$endpoint_used, .data$module
-      )
+      dplyr::select(dplyr::all_of(c(
+        "stream", "analysis_id", "freeze_id", "study_id", "sample_id",
+        "report_id", "effect_id_analysis", "pooling_block", "yi_analysis",
+        "vi_analysis", "endpoint_used", "module"
+      )))
   )
 }
 
