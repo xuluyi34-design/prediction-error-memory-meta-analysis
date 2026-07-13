@@ -488,7 +488,29 @@ write.csv(included_effects, file.path(table_dir, "included_effects_long.csv"), r
 
 model_summary <- tibble()
 diagnostic_log <- tibble(model_id = character(), diagnostic = character(), status = character(), details = character())
-cr2_log <- tibble(model_id = character(), independent_clusters = integer(), decision = character(), rationale = character())
+cr2_log <- tibble(
+  model_id = character(),
+  k = integer(),
+  independent_clusters = integer(),
+  repeated_effect_clusters = integer(),
+  decision = character(),
+  rationale = character()
+)
+cr2_results <- tibble(
+  model_id = character(),
+  k = integer(),
+  independent_clusters = integer(),
+  coefficient = character(),
+  estimate = numeric(),
+  se = numeric(),
+  t_stat = numeric(),
+  df_satterthwaite = numeric(),
+  p_value = numeric(),
+  ci_lb = numeric(),
+  ci_ub = numeric(),
+  vcov = character(),
+  test = character()
+)
 pubbias_log <- tibble(model_id = character(), k = integer(), decision = character(), details = character())
 model_objects <- list()
 
@@ -580,30 +602,121 @@ fit_known_v_block <- function(d, model_id, v_long) {
 }
 
 fit_mv_cr2_if_eligible <- function(d, model_id) {
-  clusters <- unique(na.omit(d$dependency_cluster))
-  n_clusters <- length(clusters)
+  clusters <- trimws(as.character(d$dependency_cluster))
+  missing_cluster <- is.na(clusters) | !nzchar(clusters)
+  observed_clusters <- clusters[!missing_cluster]
+  cluster_sizes <- table(observed_clusters)
+  n_clusters <- length(cluster_sizes)
+  repeated_effect_clusters <- sum(cluster_sizes > 1L)
+
+  decision_row <- function(decision, rationale) {
+    tibble::tibble(
+      model_id = model_id,
+      k = nrow(d),
+      independent_clusters = as.integer(n_clusters),
+      repeated_effect_clusters = as.integer(repeated_effect_clusters),
+      decision = decision,
+      rationale = rationale
+    )
+  }
+
+  if (nrow(d) < 2L) {
+    return(list(
+      fit = NULL,
+      test = NULL,
+      results = NULL,
+      decision = decision_row(
+        "NOT_APPLICABLE",
+        "A single-effect block has no within-cluster dependence to correct"
+      )
+    ))
+  }
+
+  if (any(missing_cluster)) {
+    return(list(
+      fit = NULL,
+      test = NULL,
+      results = NULL,
+      decision = decision_row(
+        "SKIPPED",
+        "At least one included effect lacks dependency_cluster, so CR2 eligibility cannot be established"
+      )
+    ))
+  }
+
+  if (repeated_effect_clusters == 0L) {
+    return(list(
+      fit = NULL,
+      test = NULL,
+      results = NULL,
+      decision = decision_row(
+        "NOT_APPLICABLE",
+        "Every dependency_cluster contributes one effect; Hartung-Knapp is the locked inference"
+      )
+    ))
+  }
+
   if (n_clusters < 4) {
     return(list(
       fit = NULL,
       test = NULL,
-      decision = tibble(
-        model_id = model_id,
-        independent_clusters = n_clusters,
-        decision = "SKIPPED",
-        rationale = "CR2 requires at least four independent clusters under the locked rule"
+      results = NULL,
+      decision = decision_row(
+        "SKIPPED",
+        "Dependent effects are present, but CR2 requires at least four independent clusters under the locked rule"
       )
     ))
   }
+
   fit <- metafor::rma.mv(yi = yi, V = vi, random = ~ 1 | dependency_cluster/effect_id, data = d, method = "REML")
   test <- clubSandwich::coef_test(fit, vcov = "CR2", cluster = d$dependency_cluster, test = "Satterthwaite")
+  test_frame <- as.data.frame(test)
+
+  extract_test_column <- function(candidates, label) {
+    column <- intersect(candidates, names(test_frame))
+    if (length(column) == 0L) {
+      stop(
+        "clubSandwich::coef_test() did not return the expected ", label,
+        " column. Available columns: ", paste(names(test_frame), collapse = ", "),
+        call. = FALSE
+      )
+    }
+    as.numeric(test_frame[[column[[1]]]])
+  }
+
+  estimate <- extract_test_column(c("beta", "Estimate", "estimate"), "estimate")
+  robust_se <- extract_test_column(c("SE", "se"), "standard error")
+  t_stat <- extract_test_column(c("tstat", "t_stat", "t-stat"), "t statistic")
+  df_satterthwaite <- extract_test_column(c("df_Satt", "df", "d.f."), "Satterthwaite df")
+  p_value <- extract_test_column(c("p_Satt", "p_val", "p-value", "p"), "p value")
+  coefficient <- names(stats::coef(fit))
+  if (is.null(coefficient) || length(coefficient) != length(estimate)) {
+    coefficient <- paste0("coefficient_", seq_along(estimate))
+  }
+  critical <- stats::qt(0.975, df = df_satterthwaite)
+  results <- tibble::tibble(
+    model_id = rep(model_id, length(estimate)),
+    k = rep(nrow(d), length(estimate)),
+    independent_clusters = rep(as.integer(n_clusters), length(estimate)),
+    coefficient = coefficient,
+    estimate = estimate,
+    se = robust_se,
+    t_stat = t_stat,
+    df_satterthwaite = df_satterthwaite,
+    p_value = p_value,
+    ci_lb = estimate - critical * robust_se,
+    ci_ub = estimate + critical * robust_se,
+    vcov = rep("CR2", length(estimate)),
+    test = rep("Satterthwaite", length(estimate))
+  )
+
   list(
     fit = fit,
     test = test,
-    decision = tibble(
-      model_id = model_id,
-      independent_clusters = n_clusters,
-      decision = "RUN",
-      rationale = "At least four independent clusters"
+    results = results,
+    decision = decision_row(
+      "RUN",
+      "Dependent effects and at least four independent clusters; rma.mv REML with CR2/Satterthwaite was run"
     )
   )
 }
@@ -619,26 +732,26 @@ for (i in seq_len(nrow(manifest))) {
 
   if (identical(model_id, "SENS_SHORTTERM_SOURCE_MV")) {
     result <- fit_known_v_block(d, model_id, inputs$V_Matrix_A008)
+    a008_cluster_sizes <- table(d$shared_control_block)
     cr2_log <- bind_rows(
       cr2_log,
       tibble(
         model_id = model_id,
+        k = nrow(d),
         independent_clusters = n_distinct(d$shared_control_block),
+        repeated_effect_clusters = sum(a008_cluster_sizes > 1L),
         decision = "SKIPPED",
         rationale = "Known V matrix used; only two shared-control blocks, below the locked CR2 threshold of four"
       )
     )
   } else {
     result <- fit_hk_block(d, model_id)
-    cr2_log <- bind_rows(
-      cr2_log,
-      tibble(
-        model_id = model_id,
-        independent_clusters = n_distinct(d$dependency_cluster),
-        decision = "NOT_APPLICABLE",
-        rationale = "Locked independent-effect or single-effect model; Hartung-Knapp/descriptive inference used"
-      )
-    )
+    cr2_result <- fit_mv_cr2_if_eligible(d, model_id)
+    cr2_log <- bind_rows(cr2_log, cr2_result$decision)
+    if (!is.null(cr2_result$results)) {
+      cr2_results <- bind_rows(cr2_results, cr2_result$results)
+      model_objects[[paste0(model_id, "__CR2")]] <- cr2_result$fit
+    }
   }
 
   model_summary <- bind_rows(model_summary, result$summary)
@@ -684,9 +797,12 @@ for (i in seq_len(nrow(manifest))) {
 }
 
 model_summary <- model_summary %>% arrange(match(model_id, manifest$model_id))
+cr2_log <- cr2_log %>% arrange(match(model_id, manifest$model_id))
+cr2_results <- cr2_results %>% arrange(match(model_id, manifest$model_id))
 write.csv(model_summary, file.path(table_dir, "model_summary.csv"), row.names = FALSE, na = "")
 write.csv(diagnostic_log, file.path(table_dir, "diagnostic_decisions.csv"), row.names = FALSE, na = "")
 write.csv(cr2_log, file.path(table_dir, "CR2_decision_log.csv"), row.names = FALSE, na = "")
+write.csv(cr2_results, file.path(table_dir, "CR2_results.csv"), row.names = FALSE, na = "")
 write.csv(pubbias_log, file.path(table_dir, "publication_bias_decision_log.csv"), row.names = FALSE, na = "")
 saveRDS(model_objects, file.path(model_dir, "model_objects.rds"))
 
@@ -698,7 +814,9 @@ run_note <- c(
   paste("Locked quantitative candidate rows:", nrow(lock_table)),
   paste("Included quantitative rows across model sheets:", nrow(included_effects)),
   paste("Model blocks summarized:", nrow(model_summary)),
+  paste("CR2 models run:", sum(cr2_log$decision == "RUN")),
   "Independent compatible blocks: REML + Hartung-Knapp.",
+  "Dependent-effect blocks: CR2/Satterthwaite only when at least four independent dependency clusters are available.",
   "A008: known 5x5 sampling covariance matrix with rma.mv; CR2 skipped because there are only two shared-control blocks.",
   "Single-effect blocks: descriptive estimates only.",
   "Influence/leave-one-out: only rma.uni blocks with k>=4.",

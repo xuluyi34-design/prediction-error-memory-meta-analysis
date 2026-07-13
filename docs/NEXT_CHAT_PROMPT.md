@@ -63,7 +63,7 @@
 
 - 相互独立且量尺兼容的随机效应块：REML + Hartung–Knapp。
 - A008：使用显式已知 V 的 `rma.mv`；报告 t-based 推断，并说明 CR2 因仅两个独立共享对照簇而跳过。
-- CR2 仅在至少 4 个独立簇时才允许运行。
+- CR2 仅对同一 `dependency_cluster` 含多条效应的依赖效应块进行评估，且仅在至少 4 个独立簇时运行；请同时检查 `CR2_decision_log.csv` 与 `CR2_results.csv`。
 - k=1 的块只报告描述性单效应估计，不称为合并效应。
 - influence 与 leave-one-out 仅在兼容的 `rma.uni` 模型且 k≥4 时运行。
 - Egger/发表偏倚检验仅在同一兼容量尺块 k≥10 时运行；否则明确记录跳过。
@@ -74,7 +74,7 @@
 1. 输入验证是否全部通过，以及最终进入模型的效应条数；
 2. 每个 `model_id` 的 k、估计值、SE、95% CI、p、τ²、I²、Q 与 Q p 值；
 3. 哪些模型使用 Hartung–Knapp，哪个模型使用已知 V 的多变量模型；
-4. CR2 的逐模型判断与 A008 的跳过理由；
+4. CR2 的逐模型判断、实际 CR2/Satterthwaite 结果（若有）与 A008 的跳过理由；
 5. influence/leave-one-out 的运行或跳过情况，以及有无明显影响点；
 6. 发表偏倚检验的运行或跳过情况；
 7. 森林图文件清单；

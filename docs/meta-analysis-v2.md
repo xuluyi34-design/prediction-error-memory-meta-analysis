@@ -40,7 +40,10 @@ Important dependence decisions:
 
 - Compatible independent-effect blocks use REML random effects with Hartung–Knapp inference.
 - Single-effect blocks are descriptive and are not labeled pooled estimates.
-- CR2 is allowed only with at least four independent clusters.
+- CR2 is evaluated only for blocks where a `dependency_cluster` contributes
+  multiple effects. It is run with `rma.mv` REML and Satterthwaite inference
+  only when at least four independent clusters are available; otherwise the
+  exact not-applicable or skipped reason is recorded.
 - Influence and leave-one-out diagnostics require a compatible `rma.uni` model with k ≥ 4.
 - Publication-bias or Egger testing requires a compatible block with k ≥ 10.
 - logOR, Hedges g_z, g_av, Gaussian coefficients, nonlinear coefficients, and Bayesian MPT parameters remain separate.
@@ -98,11 +101,15 @@ Core outputs include:
 - `included_effects_long.csv`
 - `model_summary.csv`
 - `CR2_decision_log.csv`
+- `CR2_results.csv`
 - `diagnostic_decisions.csv`
 - `publication_bias_decision_log.csv`
 - model-specific forest plots
 
 If validation fails, the script stops before fitting models and reports the affected sheet, effect ID, and field.
+`CR2_results.csv` always has a stable header. It is empty when no model block is
+eligible, while `CR2_decision_log.csv` preserves the decision and rationale for
+every requested model.
 
 ## Current verification status
 
