@@ -1,0 +1,22 @@
+# Raw/private data
+data/raw/*
+!data/raw/README.md
+
+# Generated results
+results/*
+!results/README.md
+
+# R/RStudio
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# renv local library
+renv/library/
+renv/staging/
+
+# OS files
+.DS_Store
+Thumbs.db
+
