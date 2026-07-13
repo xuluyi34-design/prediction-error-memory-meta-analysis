@@ -4,6 +4,21 @@ Reproducible R code for **Prediction Error and Human Episodic Memory: A Systemat
 
 This repository contains the analysis pipeline only. It does not contain copyrighted PDFs or the extraction workbook. The code is aligned with OSF protocol v1.0, frozen on 13 July 2026, the unchanged P1v2 analysis-data freeze, and the dependence-aware `runP1v2.1` analysis specification.
 
+## Analysis entry points
+
+- `analysis/run_analysis.R` retains the frozen 22-effect P1v2 baseline and the
+  `runP1v2.1` dependence-aware workflow described below.
+- `analysis/P2_analysis_v1.R` is the separate P2 runner for the locked
+  `Meta_Analysis_Input_v2` workbook. Its data structure, model rules, and run
+  instructions are documented in [docs/meta-analysis-v2.md](docs/meta-analysis-v2.md).
+- [docs/NEXT_CHAT_PROMPT.md](docs/NEXT_CHAT_PROMPT.md) is the handoff prompt for
+  reviewing a completed private P2 run; it is not a replacement repository
+  README.
+
+The P2 workbook remains private in Google Drive and is never downloaded by the
+code. A local export belongs in the ignored `data/private/` directory or may be
+supplied through an explicit path.
+
 ## 当前分析边界
 
 The P1v2 frozen baseline contains 22 strict primary effects, with one primary effect per independent sample:

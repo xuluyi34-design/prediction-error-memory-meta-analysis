@@ -2,9 +2,19 @@
 data/raw/*
 !data/raw/README.md
 
+# Private meta-analysis inputs
+data/private/
+Meta_Analysis_Input_v2.xlsx
+*.xlsx
+*.xls
+*.pdf
+GitHub_meta_analysis_v2_handoff.zip
+
 # Generated results
 results/*
 !results/README.md
+runP2v1_*/
+results/runP2v1_*/
 
 # R/RStudio
 .Rhistory
@@ -19,4 +29,3 @@ renv/staging/
 # OS files
 .DS_Store
 Thumbs.db
-
