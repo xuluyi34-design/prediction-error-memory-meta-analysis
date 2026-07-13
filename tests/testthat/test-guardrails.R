@@ -1,3 +1,14 @@
+testthat::test_that("P1v2 frozen counts are explicit", {
+  config <- pem_analysis_config()
+
+  testthat::expect_identical(config$analysis_data_version, "P1v2")
+  testthat::expect_identical(
+    config$expected_counts,
+    c(logor = 14L, smd = 5L, nonlinear = 3L)
+  )
+  testthat::expect_identical(config$expected_total, 22L)
+})
+
 testthat::test_that("moderator analysis cannot run before thresholds are frozen", {
   testthat::expect_error(
     pem_fit_moderator(),

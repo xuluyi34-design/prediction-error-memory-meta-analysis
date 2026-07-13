@@ -2,19 +2,26 @@
 
 Reproducible R code for **Prediction Error and Human Episodic Memory: A Systematic Review and Multilevel Meta-analysis Across Memory Outcomes**.
 
-This repository contains the analysis pipeline only. It does not contain copyrighted PDFs or the extraction workbook. The code is aligned with OSF protocol v1.0, frozen on 13 July 2026, and with the current `Meta_Analysis_Input_v1` workbook structure.
+This repository contains the analysis pipeline only. It does not contain copyrighted PDFs or the extraction workbook. The code is aligned with OSF protocol v1.0, frozen on 13 July 2026, and with the current P1v2 analysis-data freeze.
 
 ## 当前分析边界
 
-The frozen baseline contains 21 strict primary effects, with one primary effect per independent sample:
+The P1v2 frozen baseline contains 22 strict primary effects, with one primary effect per independent sample:
 
 | Analysis stream | Sheet | Current k | Rule |
 |---|---|---:|---|
 | Native log odds | `MAI_LogOR_v1` | 14 | Analyze only within compatible `pooling_block` values; endpoint-standardized columns are used only for prespecified endpoint blocks. |
-| Standardized effects | `MAI_SMD_v1` | 5 | Keep `g_z`, `g_av`, provisional effects, and participant-slope SMDs separated unless denominator equivalence is documented. |
-| Nonlinear effects | `MAI_Nonlinear_v1` | 2 | Analyze quadratic coefficients separately; with k < 5, retain as descriptive/narrative evidence. |
+| Standardized effects | `MAI_SMD_v1` | 5 | Keep denominator families separated; `SMD_005` is confirmed as `g_z` in P1v2. |
+| Nonlinear effects | `MAI_Nonlinear_v1` | 3 | Analyze quadratic coefficients separately; with k < 5, retain as descriptive/narrative evidence. |
 
 The three streams are never concatenated into one unqualified model. Positive effects mean that stronger, more unexpected, or more positive PE predicts better target memory after the prespecified direction harmonization.
+
+P1v2 adds the verified A011 Experiment 2A nonlinear coefficient (N = 22,
+1,696 trials, quadratic beta = .04, SE = .10, logit link), confirms A031
+Experiment 1 `SMD_005` as `g_z`, and standardizes all 22 included RoB labels to
+`Some concerns`. A011 Experiment 2B, A013 Experiment 2, and A031 Experiment 2
+remain in `Conditional_Effect_Queue_v2`; they are not assigned inferred point
+estimates and are not read into the primary models.
 
 ## 1. 准备数据
 
@@ -69,7 +76,7 @@ Sys.setenv(PEM_WORKBOOK = "D:/your-folder/workbook.xlsx")
 source("analysis/run_analysis.R")
 ```
 
-The default `PEM_STRICT_FREEZE=true` enforces the frozen 14 + 5 + 2 counts and the one-sample/one-primary-effect rule. Do not disable it for the confirmatory analysis unless the change is covered by a dated protocol amendment.
+The default `PEM_STRICT_FREEZE=true` enforces the P1v2 frozen 14 + 5 + 3 counts and the one-sample/one-primary-effect rule. Do not disable it for the confirmatory analysis unless the change is covered by a dated protocol amendment.
 
 ## 4. 主要输出
 

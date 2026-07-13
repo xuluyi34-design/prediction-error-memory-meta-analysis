@@ -1,6 +1,6 @@
 # Local analysis data
 
-Place the exported analysis workbook here as:
+Place the P1v2 analysis workbook here as:
 
 `P1数据.xlsx`
 
