@@ -778,7 +778,7 @@ for (i in seq_len(nrow(manifest))) {
     if (nrow(loo_df) == nrow(d)) loo_df$deleted_effect <- d$effect_id
     write.csv(loo_df, file.path(table_dir, paste0("leave_one_out_", safe_filename(model_id), ".csv")), row.names = FALSE, na = "")
 
-    infl <- metafor::influence(result$fit)
+    infl <- stats::influence(result$fit)
     infl_df <- as.data.frame(infl$inf) %>% rownames_to_column("effect_id")
     if (nrow(infl_df) == nrow(d)) infl_df$effect_id <- d$effect_id
     write.csv(infl_df, file.path(table_dir, paste0("influence_", safe_filename(model_id), ".csv")), row.names = FALSE, na = "")
