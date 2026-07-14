@@ -73,3 +73,47 @@ testthat::test_that("P2 CR2 is limited to dependent blocks with four clusters", 
   testthat::expect_true(all(is.finite(eligible_result$results$se)))
   testthat::expect_true(all(is.finite(eligible_result$results$df_satterthwaite)))
 })
+
+
+testthat::test_that("P2 influence diagnostics dispatch through the stats generic", {
+  current <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+  repeat {
+    script_path <- file.path(current, "analysis", "P2_analysis_v1.R")
+    if (file.exists(script_path)) break
+    parent <- dirname(current)
+    if (identical(parent, current)) {
+      stop("Could not locate analysis/P2_analysis_v1.R from the test directory.")
+    }
+    current <- parent
+  }
+
+  script_text <- readLines(script_path, warn = FALSE)
+  testthat::expect_false(any(grepl(
+    "metafor::influence(result$fit)",
+    script_text,
+    fixed = TRUE
+  )))
+  testthat::expect_true(any(grepl(
+    "stats::influence(result$fit)",
+    script_text,
+    fixed = TRUE
+  )))
+
+  d <- data.frame(
+    yi = c(0.10, 0.20, -0.05, 0.15),
+    vi = c(0.04, 0.05, 0.03, 0.04)
+  )
+  fit <- metafor::rma.uni(
+    yi = yi,
+    vi = vi,
+    data = d,
+    method = "REML",
+    test = "knha"
+  )
+  infl <- stats::influence(fit)
+  infl_df <- as.data.frame(infl$inf)
+
+  testthat::expect_s3_class(infl, "infl.rma.uni")
+  testthat::expect_equal(nrow(infl_df), nrow(d))
+  testthat::expect_true(all(c("cook.d", "hat", "inf") %in% names(infl_df)))
+})
