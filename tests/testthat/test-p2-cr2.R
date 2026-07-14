@@ -117,3 +117,43 @@ testthat::test_that("P2 influence diagnostics dispatch through the stats generic
   testthat::expect_equal(nrow(infl_df), nrow(d))
   testthat::expect_true(all(c("cook.d", "hat", "inf") %in% names(infl_df)))
 })
+
+
+testthat::test_that("P2 model loop isolates the requested model_id", {
+  current <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
+  repeat {
+    script_path <- file.path(current, "analysis", "P2_analysis_v1.R")
+    if (file.exists(script_path)) break
+    parent <- dirname(current)
+    if (identical(parent, current)) {
+      stop("Could not locate analysis/P2_analysis_v1.R from the test directory.")
+    }
+    current <- parent
+  }
+
+  script_text <- readLines(script_path, warn = FALSE)
+  testthat::expect_false(any(grepl(
+    "filter(.data$model_id == model_id)",
+    script_text,
+    fixed = TRUE
+  )))
+  testthat::expect_true(any(grepl(
+    "filter(.data$model_id == .env$model_id)",
+    script_text,
+    fixed = TRUE
+  )))
+
+  model_id <- "SENS_SHORTTERM_SOURCE_MV"
+  included_effects <- data.frame(
+    effect_id = paste0("E", 1:7),
+    model_id = c(rep(model_id, 5), "OTHER_A", "OTHER_B"),
+    stringsAsFactors = FALSE
+  )
+  selected <- dplyr::filter(
+    included_effects,
+    .data$model_id == .env$model_id
+  )
+
+  testthat::expect_equal(nrow(selected), 5L)
+  testthat::expect_true(all(selected$model_id == model_id))
+})
