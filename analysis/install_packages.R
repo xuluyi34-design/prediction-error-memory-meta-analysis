@@ -2,8 +2,11 @@ required <- c(
   "clubSandwich",
   "dplyr",
   "metafor",
+  "purrr",
   "readxl",
-  "testthat"
+  "stringr",
+  "testthat",
+  "tibble"
 )
 
 # GitHub-hosted runners may build `fs` from source. Its bundled libuv fallback
