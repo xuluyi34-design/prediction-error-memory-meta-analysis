@@ -24,6 +24,10 @@ jobs:
         run: |
           Rscript -e "parse(file = 'analysis/P2_analysis_v1.R')"
           Rscript -e "parse(file = 'analysis/P2_analysis_v1.1.R')"
+          Rscript -e "parse(file = 'analysis/P3_analysis_v1.0.R')"
+
+      - name: Run P3 synthetic smoke test
+        run: Rscript analysis/P3_analysis_v1.0.R --smoke-test
 
       - name: Run tests
         run: Rscript tests/testthat.R
