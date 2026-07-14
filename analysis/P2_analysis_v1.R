@@ -727,7 +727,7 @@ for (i in seq_len(nrow(manifest))) {
   m <- manifest[i, ]
   if (!identical(as.character(m$run_model), "Yes")) next
   model_id <- as.character(m$model_id)
-  d <- included_effects %>% filter(.data$model_id == model_id)
+  d <- included_effects %>% filter(.data$model_id == .env$model_id)
   if (nrow(d) == 0) next
 
   if (identical(model_id, "SENS_SHORTTERM_SOURCE_MV")) {
