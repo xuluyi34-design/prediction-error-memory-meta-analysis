@@ -15,14 +15,19 @@ This repository contains the analysis pipeline only. It does not contain copyrig
   metadata-only QC rerun of `Meta_Analysis_Input_v2.1`. It verifies the three
   independent A020 age-sample clusters and performs a 26-model numeric
   comparison against the successful v1 run at tolerance `1e-12`.
+- `analysis/P3_analysis_v1.0.R` is the read-only entry point for the private
+  `Meta_Analysis_Input_v3.1` workbook. It applies the v3.1 manifest over the
+  inherited v3 modules, enforces the second-wave QC and replacement rules, and
+  keeps primary, sensitivity, dependent-effect, and descriptive outputs
+  separate. See [docs/meta-analysis-p3-v1.md](docs/meta-analysis-p3-v1.md).
 - [docs/NEXT_CHAT_PROMPT.md](docs/NEXT_CHAT_PROMPT.md) is the handoff prompt for
   reviewing a completed private P2 run; it is not a replacement repository
   README.
 
-The P2 workbooks remain private in Google Drive and are never downloaded by the
-code. A local export belongs in the ignored `data/private/` directory or may be
-supplied through an explicit path. The v2.1 rerun is an interim QC checkpoint,
-not the final meta-analysis freeze.
+The P2 and P3 workbooks remain private in Google Drive and are never downloaded
+by the code. A local export belongs in the ignored `data/private/` directory or
+may be supplied through an explicit path. The v2.1 rerun remains an interim QC
+checkpoint and P3 does not alter the frozen P1/P2 files.
 
 ## 当前分析边界
 

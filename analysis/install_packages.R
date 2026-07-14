@@ -1,5 +1,6 @@
 required <- c(
   "clubSandwich",
+  "digest",
   "dplyr",
   "metafor",
   "purrr",

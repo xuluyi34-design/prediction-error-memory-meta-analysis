@@ -6,6 +6,11 @@ data/raw/*
 data/private/
 Meta_Analysis_Input_v2.xlsx
 Meta_Analysis_Input_v2.1.xlsx
+Meta_Analysis_Input_v3.xlsx
+Meta_Analysis_Input_v3.1.xlsx
+Effect_Lock_v3.1.xlsx
+Meta_Analysis_Input_v3*.csv
+Effect_Lock_v3.1*.csv
 *.xlsx
 *.xls
 *.pdf
@@ -20,6 +25,10 @@ runP2v1.1_*/
 results/runP2v1.1_*/
 runP2v1.1_*.zip
 results/runP2v1.1_*.zip
+runP3v1_*/
+results/runP3v1_*/
+runP3v1_*.zip
+results/runP3v1_*.zip
 
 # R/RStudio
 .Rhistory
