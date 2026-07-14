@@ -21,7 +21,9 @@ jobs:
         run: Rscript analysis/install_packages.R
 
       - name: Parse analysis entry points
-        run: Rscript -e "parse(file = 'analysis/P2_analysis_v1.R')"
+        run: |
+          Rscript -e "parse(file = 'analysis/P2_analysis_v1.R')"
+          Rscript -e "parse(file = 'analysis/P2_analysis_v1.1.R')"
 
       - name: Run tests
         run: Rscript tests/testthat.R

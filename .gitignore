@@ -5,6 +5,7 @@ data/raw/*
 # Private meta-analysis inputs
 data/private/
 Meta_Analysis_Input_v2.xlsx
+Meta_Analysis_Input_v2.1.xlsx
 *.xlsx
 *.xls
 *.pdf
@@ -15,6 +16,10 @@ results/*
 !results/README.md
 runP2v1_*/
 results/runP2v1_*/
+runP2v1.1_*/
+results/runP2v1.1_*/
+runP2v1.1_*.zip
+results/runP2v1.1_*.zip
 
 # R/RStudio
 .Rhistory

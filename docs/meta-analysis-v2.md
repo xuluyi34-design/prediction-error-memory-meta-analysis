@@ -1,12 +1,35 @@
-# Meta-analysis v2: locked P1v2 + P2 workflow
+# Meta-analysis v2/v2.1: locked P1v2 + interim P2 QC workflow
 
 This repository workflow analyzes the locked quantitative inputs for the prediction-error/surprise and memory review.
 
+## Interim P2 v1.1 QC checkpoint
+
+`analysis/P2_analysis_v1.1.R` is a metadata-only QC rerun derived from the
+unchanged `analysis/P2_analysis_v1.R` baseline. It reads the private
+[`Meta_Analysis_Input_v2.1`](https://docs.google.com/spreadsheets/d/1BaWXC1wWLC_6kteg272okrTI1ZHAF0CTB76RXYWj8KE/edit)
+workbook and locks the following A020 dependency clusters:
+
+- `LOGOR_006` → `A020_CHILD`
+- `LOGOR_007` → `A020_YOUNG`
+- `LOGOR_008` → `A020_OLDER`
+
+The script asserts that the three clusters are distinct and that their `yi`,
+`sei`, and `vi` values pass through unchanged. It retains all 26 model
+definitions and compares nine numeric fields for every model against
+`runP2v1_20260714_093232` at an absolute tolerance of `1e-12`.
+
+This is an interim QC checkpoint, not the final meta-analysis freeze. The
+report universe remains 51 pending the decision on a second
+literature-inclusion wave.
+
 ## Data location
 
-The input data are maintained as a private native Google Sheet and are not stored in Git:
+The baseline v2 and interim v2.1 inputs are maintained as private native Google
+Sheets and are not stored in Git:
 
 [Meta_Analysis_Input_v2](https://docs.google.com/spreadsheets/d/150k4bvDpfSBX48eoUpLgDxIAZi0N3ZuGwTLxoZOo52Y/edit)
+
+[Meta_Analysis_Input_v2.1](https://docs.google.com/spreadsheets/d/1BaWXC1wWLC_6kteg272okrTI1ZHAF0CTB76RXYWj8KE/edit)
 
 To run the analysis, export the sheet as `Meta_Analysis_Input_v2.xlsx` and place it in a local ignored directory such as:
 
@@ -62,6 +85,25 @@ install.packages(c(
 The script does not install packages automatically. It stops with an exact installation command if dependencies are missing.
 
 ## Running the analysis
+
+For the v2.1 QC rerun, export the private sheet as
+`data/private/Meta_Analysis_Input_v2.1.xlsx`, retain the unmodified baseline run
+directory locally, and run:
+
+```bash
+Rscript analysis/P2_analysis_v1.1.R \
+  --input=data/private/Meta_Analysis_Input_v2.1.xlsx \
+  --baseline-run=results/runP2v1_20260714_093232 \
+  --output-dir=results
+```
+
+The v1.1 runner creates `runP2v1.1_YYYYMMDD_HHMMSS` and includes a
+machine-readable `P2_v1_vs_v1.1_numeric_comparison.csv`, a final validation
+log, `README_run.txt`, and top-level copies of the required handoff artifacts.
+The workbook and complete run directory remain ignored and must not be
+committed.
+
+For the retained v2 baseline runner:
 
 The repository-integrated script supports an explicit private input path. For example:
 
@@ -123,4 +165,7 @@ Before repository handoff, the workbook passed structural checks:
 - all 26 model blocks match the expected k in `Analysis_Manifest`;
 - the A008 covariance matrix is complete and symmetric.
 
-The source workspace did not contain an R runtime, so the statistical models were not executed there. The GitHub workspace must report syntax checks and full-run status separately and must not describe an unrun model as completed.
+Private v2.1 execution and PASS/FAIL status are reported with the external run
+handoff, not committed here. The private workbook, generated run directory,
+figures, model objects, PDFs, numeric comparison, and result ZIP are not stored
+in Git.

@@ -11,13 +11,18 @@ This repository contains the analysis pipeline only. It does not contain copyrig
 - `analysis/P2_analysis_v1.R` is the separate P2 runner for the locked
   `Meta_Analysis_Input_v2` workbook. Its data structure, model rules, and run
   instructions are documented in [docs/meta-analysis-v2.md](docs/meta-analysis-v2.md).
+- `analysis/P2_analysis_v1.1.R` retains the v1 model definitions for an interim
+  metadata-only QC rerun of `Meta_Analysis_Input_v2.1`. It verifies the three
+  independent A020 age-sample clusters and performs a 26-model numeric
+  comparison against the successful v1 run at tolerance `1e-12`.
 - [docs/NEXT_CHAT_PROMPT.md](docs/NEXT_CHAT_PROMPT.md) is the handoff prompt for
   reviewing a completed private P2 run; it is not a replacement repository
   README.
 
-The P2 workbook remains private in Google Drive and is never downloaded by the
+The P2 workbooks remain private in Google Drive and are never downloaded by the
 code. A local export belongs in the ignored `data/private/` directory or may be
-supplied through an explicit path.
+supplied through an explicit path. The v2.1 rerun is an interim QC checkpoint,
+not the final meta-analysis freeze.
 
 ## 当前分析边界
 
