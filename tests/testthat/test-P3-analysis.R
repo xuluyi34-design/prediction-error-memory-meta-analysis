@@ -60,6 +60,10 @@ testthat::test_that("P3 paths honor explicit, environment, private, and compatib
 testthat::test_that("P3 workbook reader locks the two metadata rows", {
   reader_text <- paste(deparse(body(p3_read_workbook), width.cutoff = 500L), collapse = "\n")
   testthat::expect_true(grepl("skip = 2", reader_text, fixed = TRUE))
+  testthat::expect_identical(
+    p3_resolve_rescue_sheet(c("README", "Rescue_Resolution_v3_1")),
+    "Rescue_Resolution_v3_1"
+  )
 })
 
 testthat::test_that("P3 synthetic smoke test covers HK, known V, CR2, A008, and replacements", {
@@ -161,12 +165,31 @@ p3_qc_fixture <- function() {
     spec
   }))
 
-  rescue <- data.frame(
-    record_id = paste0("RES", 1:21),
-    record_type = c(rep("NEW_ATOMIC", 17), rep("EXISTING_COMPONENT", 4)),
-    analysis_role = c(rep("PRIMARY", 9), rep("SENSITIVITY", 4), rep("COMPONENT_ONLY", 8)),
-    analysis_include = c(rep("Yes", 13), rep("No", 8)),
-    dependency_cluster = c(paste0("RESCUE_C", 1:13), rep("", 8)),
+  rescue_resolution <- data.frame(
+    candidate_id = paste0("S", sprintf("%03d", 1:7)),
+    article_id = paste0("A", sprintf("%03d", 1:7)),
+    resolution = "RESOLVED",
+    stringsAsFactors = FALSE
+  )
+  raw_v3 <- data.frame(effect_id = paste0("RAW", 1:39), stringsAsFactors = FALSE)
+  raw_v31 <- data.frame(
+    effect_id = paste0("RAW", 1:56),
+    candidate_id = c(rep("", 39), rep(rescue_resolution$candidate_id, length.out = 17)),
+    stringsAsFactors = FALSE
+  )
+  rescue_lock <- data.frame(
+    lock_id = paste0("LOCK", 1:21),
+    source_version = "v3.1",
+    source_analysis_id = c(effects$effect_id, paste0("RES_EXTRA", seq_len(21 - nrow(effects)))),
+    article_id = rep(rescue_resolution$article_id, length.out = 21),
+    analysis_include = "Yes",
+    include_primary = c(rep("Yes", 13), rep("No", 8)),
+    include_sensitivity = c(rep("No", 13), rep("Yes", 5), rep("No", 3)),
+    dependency_cluster = c(
+      paste0("PRIMARY_C", c(1:9, 1:4)),
+      paste0("SENS_C", c(1:4, 1)),
+      paste0("OTHER_C", 1:3)
+    ),
     stringsAsFactors = FALSE
   )
   quarantine <- data.frame(
@@ -177,13 +200,14 @@ p3_qc_fixture <- function() {
   )
   tables <- list(
     QC_Summary_v3_1 = data.frame(check = c("a", "b"), status = "PASS"),
-    Raw_Effects_v3_1 = data.frame(effect_id = paste0("RAW", 1:56)),
-    Repository_Rescue_Lock_v3_1 = rescue,
+    Rescue_Resolution_v3_1 = rescue_resolution,
+    Raw_Effects_v3 = raw_v3,
+    Raw_Effects_v3_1 = raw_v31,
     Quarantined_Effects_v3_1 = quarantine,
     Direction_Audit_v3_1 = data.frame(effect_id = effects$effect_id, status = "LOCKED"),
-    Effect_Decision_Lock_v3_1 = data.frame(effect_id = effects$effect_id, analysis_include = "Yes")
+    Effect_Decision_Lock_v3_1 = rescue_lock
   )
-  attr(tables, "rescue_sheet") <- "Repository_Rescue_Lock_v3_1"
+  attr(tables, "rescue_sheet") <- "Rescue_Resolution_v3_1"
   list(tables = tables, effects = effects, manifest = manifest)
 }
 
@@ -198,6 +222,12 @@ testthat::test_that("P3 hard QC accepts the synthetic contract and rejects S023 
   qc_leaked <- p3_validate_input_qc(fixture$tables, leaked, fixture$manifest)
   target <- qc_leaked[qc_leaked$check == "S023 Experiment 3 quarantine", , drop = FALSE]
   testthat::expect_identical(target$status[[1]], "FAIL")
+
+  bad_delta <- fixture
+  bad_delta$tables$Raw_Effects_v3$effect_id[[39]] <- "RAW40"
+  qc_bad_delta <- p3_validate_input_qc(bad_delta$tables, bad_delta$effects, bad_delta$manifest)
+  target_delta <- qc_bad_delta[qc_bad_delta$check == "Repository-rescue atomic count", , drop = FALSE]
+  testthat::expect_identical(target_delta$status[[1]], "FAIL")
 })
 
 testthat::test_that("S016 joint data retains four experiments and recorded L-Q covariance", {

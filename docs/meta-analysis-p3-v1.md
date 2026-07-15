@@ -46,6 +46,7 @@ quarantine, direction-audit, and decision-lock sheets specified by the v3.1
 handoff. It also requires:
 
 - `Analysis_Manifest_v3`;
+- `Raw_Effects_v3`;
 - `V_Matrix_A008`;
 - `Event_Temporal_v3`;
 - `Updating_v3`;
@@ -53,10 +54,11 @@ handoff. It also requires:
 - `Grey_LogOR_v3`;
 - `Module_Gaussian_v3`.
 
-A repository-rescue lock sheet must be present as
-`Repository_Rescue_Lock_v3_1`, `Repository_Rescue_v3_1`, or
-`Rescue_Lock_v3_1`. The runner stops if this lock cannot be identified
-unambiguously.
+`Rescue_Resolution_v3_1` identifies the seven rescue candidates and their
+article IDs. The runner links those IDs to `Effect_Decision_Lock_v3_1`; it does
+not treat the seven-row resolution sheet as an effect-level lock. Legacy rescue
+sheet names remain accepted for compatibility, but they must expose the same
+candidate/article mapping.
 
 ## Hard QC stop
 
@@ -64,8 +66,10 @@ Before fitting any model, the runner verifies the following conditions:
 
 - every populated `QC_Summary_v3_1` status is `PASS`;
 - `Raw_Effects_v3_1` contains 56 valid raw-effect records;
-- the repository-rescue lock contains 21 effect/component records, including
-  17 new atomic records;
+- the seven rescue article IDs select 21 v3.1 effect/component rows from
+  `Effect_Decision_Lock_v3_1`;
+- the set difference between `Raw_Effects_v3_1` and `Raw_Effects_v3` contains
+  exactly 17 new atomic effect IDs, all mapped to a rescue candidate;
 - the rescue layer contributes independent primary `k = 9` and sensitivity
   `k = 4`;
 - every included record has finite `yi`, positive `sei` and `vi`, and

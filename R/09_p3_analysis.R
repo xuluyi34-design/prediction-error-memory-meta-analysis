@@ -31,6 +31,7 @@ P3_INCREMENT_SHEETS <- c(
 
 P3_INHERITED_SHEETS <- c(
   "Analysis_Manifest_v3",
+  "Raw_Effects_v3",
   "V_Matrix_A008",
   "Event_Temporal_v3",
   "Updating_v3",
@@ -54,6 +55,7 @@ P3_ANALYTIC_SHEETS <- c(
 )
 
 P3_RESCUE_SHEET_CANDIDATES <- c(
+  "Rescue_Resolution_v3_1",
   "Repository_Rescue_Lock_v3_1",
   "Repository_Rescue_v3_1",
   "Rescue_Lock_v3_1"
@@ -268,13 +270,15 @@ p3_nonempty_rows <- function(df, id_candidates, table) {
 p3_resolve_rescue_sheet <- function(sheet_names) {
   exact <- P3_RESCUE_SHEET_CANDIDATES[P3_RESCUE_SHEET_CANDIDATES %in% sheet_names]
   if (length(exact) > 0L) return(exact[[1]])
-  regex <- sheet_names[grepl("rescue.*lock|lock.*rescue", sheet_names, ignore.case = TRUE)]
+  regex <- sheet_names[
+    grepl("rescue.*(lock|resolution)|(lock|resolution).*rescue", sheet_names, ignore.case = TRUE)
+  ]
   if (length(regex) == 1L) return(regex[[1]])
   if (length(regex) > 1L) {
-    stop("Multiple repository-rescue lock sheets were found: ", paste(regex, collapse = ", "), call. = FALSE)
+    stop("Multiple repository-rescue decision sheets were found: ", paste(regex, collapse = ", "), call. = FALSE)
   }
   stop(
-    "Repository-rescue lock sheet not found. Expected one of: ",
+    "Repository-rescue decision sheet not found. Expected one of: ",
     paste(P3_RESCUE_SHEET_CANDIDATES, collapse = ", "),
     call. = FALSE
   )
@@ -478,46 +482,29 @@ p3_status_column <- function(df, table) {
   )
 }
 
-p3_rescue_contribution_counts <- function(rescue) {
-  role_col <- p3_find_column(
-    rescue,
-    c("analysis_role", "role", "analysis_stream", "contribution_role"),
+p3_rescue_contribution_counts <- function(rescue_lock) {
+  primary_col <- p3_find_column(
+    rescue_lock,
+    c("include_primary"),
     required = TRUE,
-    table = "repository-rescue lock"
+    table = "Effect_Decision_Lock_v3_1 rescue rows"
   )
-  role <- toupper(p3_text(rescue[[role_col]]))
-  include_col <- p3_find_column(
-    rescue,
-    c("analysis_include", "include", "run_effect"),
-    required = FALSE,
-    table = "repository-rescue lock"
+  sensitivity_col <- p3_find_column(
+    rescue_lock,
+    c("include_sensitivity"),
+    required = TRUE,
+    table = "Effect_Decision_Lock_v3_1 rescue rows"
   )
-  included <- if (is.na(include_col)) rep(TRUE, nrow(rescue)) else p3_is_yes(rescue[[include_col]])
-  k_col <- p3_find_column(
-    rescue,
-    c("k_contribution", "independent_k_contribution", "contributes_k", "independent_k"),
-    required = FALSE,
-    table = "repository-rescue lock"
-  )
-
-  if (!is.na(k_col)) {
-    contribution <- suppressWarnings(as.numeric(rescue[[k_col]]))
-    contribution[!is.finite(contribution)] <- 0
-    primary_k <- sum(contribution[included & grepl("PRIMARY", role)], na.rm = TRUE)
-    sensitivity_k <- sum(contribution[included & grepl("SENSIT", role)], na.rm = TRUE)
-    return(c(primary = as.integer(primary_k), sensitivity = as.integer(sensitivity_k)))
-  }
-
   cluster_col <- p3_find_column(
-    rescue,
+    rescue_lock,
     c("dependency_cluster", "independent_cluster", "sample_id", "independent_sample_id"),
     required = TRUE,
-    table = "repository-rescue lock"
+    table = "Effect_Decision_Lock_v3_1 rescue rows"
   )
-  clusters <- p3_text(rescue[[cluster_col]])
+  clusters <- p3_text(rescue_lock[[cluster_col]])
   c(
-    primary = length(unique(clusters[included & grepl("PRIMARY", role) & nzchar(clusters)])),
-    sensitivity = length(unique(clusters[included & grepl("SENSIT", role) & nzchar(clusters)]))
+    primary = length(unique(clusters[p3_is_yes(rescue_lock[[primary_col]]) & nzchar(clusters)])),
+    sensitivity = length(unique(clusters[p3_is_yes(rescue_lock[[sensitivity_col]]) & nzchar(clusters)]))
   )
 }
 
@@ -579,37 +566,70 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
     add(p3_qc_fail("Raw effects count", paste("Expected 56; found", nrow(raw))))
   }
 
+  raw_v3 <- p3_nonempty_rows(
+    tables$Raw_Effects_v3,
+    c("effect_id", "raw_effect_id", "record_id", "source_effect_id"),
+    "Raw_Effects_v3"
+  )
+  raw_id_col <- p3_find_column(raw, c("effect_id", "raw_effect_id", "record_id", "source_effect_id"), TRUE, "Raw_Effects_v3_1")
+  raw_v3_id_col <- p3_find_column(raw_v3, c("effect_id", "raw_effect_id", "record_id", "source_effect_id"), TRUE, "Raw_Effects_v3")
+
   rescue_sheet <- attr(tables, "rescue_sheet")
-  rescue <- p3_nonempty_rows(
+  rescue_resolution <- p3_nonempty_rows(
     tables[[rescue_sheet]],
-    c("rescue_id", "effect_id", "component_id", "record_id", "source_analysis_id"),
+    c("candidate_id"),
     rescue_sheet
   )
-  if (nrow(rescue) == 21L) {
+  rescue_candidate_col <- p3_find_column(rescue_resolution, c("candidate_id"), TRUE, rescue_sheet)
+  rescue_article_col <- p3_find_column(rescue_resolution, c("article_id"), TRUE, rescue_sheet)
+  rescue_candidates <- unique(p3_text(rescue_resolution[[rescue_candidate_col]]))
+  rescue_articles <- unique(p3_text(rescue_resolution[[rescue_article_col]]))
+  rescue_candidates <- rescue_candidates[nzchar(rescue_candidates)]
+  rescue_articles <- rescue_articles[nzchar(rescue_articles)]
+
+  effect_lock <- tables$Effect_Decision_Lock_v3_1
+  lock_article_col <- p3_find_column(effect_lock, c("article_id"), TRUE, "Effect_Decision_Lock_v3_1")
+  lock_version_col <- p3_find_column(effect_lock, c("source_version", "data_version"), TRUE, "Effect_Decision_Lock_v3_1")
+  lock_versions <- toupper(gsub("_", ".", p3_text(effect_lock[[lock_version_col]]), fixed = TRUE))
+  rescue_lock <- effect_lock[
+    p3_text(effect_lock[[lock_article_col]]) %in% rescue_articles & lock_versions == "V3.1",
+    ,
+    drop = FALSE
+  ]
+  rescue_lock <- p3_nonempty_rows(
+    rescue_lock,
+    c("source_analysis_id", "effect_id", "lock_id", "record_id"),
+    "Effect_Decision_Lock_v3_1 rescue rows"
+  )
+  if (nrow(rescue_lock) == 21L) {
     add(p3_qc_pass("Repository-rescue lock count", "21 effect/component records"))
   } else {
-    add(p3_qc_fail("Repository-rescue lock count", paste("Expected 21; found", nrow(rescue))))
+    add(p3_qc_fail("Repository-rescue lock count", paste("Expected 21; found", nrow(rescue_lock))))
   }
 
-  atom_col <- p3_find_column(
-    rescue,
-    c("record_type", "component_type", "rescue_record_type", "is_new_atomic", "new_atomic_record"),
-    required = TRUE,
-    table = rescue_sheet
+  new_atomic_ids <- setdiff(
+    p3_text(raw[[raw_id_col]]),
+    p3_text(raw_v3[[raw_v3_id_col]])
   )
-  atom_values <- toupper(p3_text(rescue[[atom_col]]))
-  new_atomic <- atom_values %in% c("YES", "Y", "TRUE", "1", "NEW_ATOMIC", "NEW ATOMIC") |
-    grepl("NEW.*ATOM|ATOM.*NEW", atom_values)
-  if (sum(new_atomic) == 17L) {
+  raw_candidate_col <- p3_find_column(raw, c("candidate_id"), TRUE, "Raw_Effects_v3_1")
+  new_atomic_rows <- raw[p3_text(raw[[raw_id_col]]) %in% new_atomic_ids, , drop = FALSE]
+  new_atomic_candidates <- p3_text(new_atomic_rows[[raw_candidate_col]])
+  atomic_mapping_ok <- length(new_atomic_ids) == nrow(new_atomic_rows) &&
+    all(nzchar(new_atomic_candidates)) &&
+    all(new_atomic_candidates %in% rescue_candidates)
+  if (length(new_atomic_ids) == 17L && atomic_mapping_ok) {
     add(p3_qc_pass("Repository-rescue atomic count", "17 new atomic records"))
   } else {
     add(p3_qc_fail(
       "Repository-rescue atomic count",
-      paste("Expected 17; found", sum(new_atomic))
+      paste0(
+        "Expected 17 newly added Raw_Effects_v3_1 IDs mapped to rescue candidates; found ",
+        length(new_atomic_ids), "; mapping valid=", atomic_mapping_ok
+      )
     ))
   }
 
-  rescue_k <- p3_rescue_contribution_counts(rescue)
+  rescue_k <- p3_rescue_contribution_counts(rescue_lock)
   if (identical(unname(rescue_k), c(9L, 4L))) {
     add(p3_qc_pass("Repository-rescue independent contributions", "primary k=9; sensitivity k=4"))
   } else {
