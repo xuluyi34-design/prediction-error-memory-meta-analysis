@@ -66,6 +66,68 @@ testthat::test_that("P3 workbook reader locks the two metadata rows", {
   )
 })
 
+testthat::test_that("P3 expands sheet-level manifests into unique model specifications", {
+  policy <- data.frame(
+    evidence_block = "Published native logOR",
+    input_sheet = "Main_LogOR_v3_1",
+    effect_scale = "logOR",
+    pooling_block = "model_id specific",
+    inference_plan = "REML + Hartung-Knapp",
+    guardrail = "Keep predictor units separate",
+    stringsAsFactors = FALSE
+  )
+  inherited <- data.frame(
+    evidence_block = "Event/temporal",
+    input_sheet = "Event_Temporal_v3",
+    effect_scale = "native beta/Hedges g/descriptive",
+    pooling_block = "outcome-specific",
+    inference_plan = "Existing module rules retained",
+    guardrail = "Copied from baseline",
+    stringsAsFactors = FALSE
+  )
+  effects <- rbind(
+    p3_synthetic_effects("E1", "C1", "MODEL_A", 0.1, 0.04),
+    p3_synthetic_effects("E2", "C2", "MODEL_B", 0.2, 0.04)
+  )
+  effects$source_sheet <- "Main_LogOR_v3_1"
+  tables <- list(Analysis_Manifest_v3 = inherited, Analysis_Manifest_v3_1 = policy)
+  expanded <- p3_combine_manifests(tables, effects)
+  testthat::expect_setequal(expanded$model_id, c("MODEL_A", "MODEL_B"))
+  testthat::expect_true(all(expanded$source_sheet == "Main_LogOR_v3_1"))
+  testthat::expect_true(all(expanded$manifest_version == "v3.1"))
+
+  empty_policy <- p3_standardize_manifest(policy[0, , drop = FALSE], "v3.1")
+  testthat::expect_equal(nrow(empty_policy), 0L)
+})
+
+testthat::test_that("MPT records remain descriptive and retain reported credible intervals", {
+  mpt <- data.frame(
+    mpt_id = "MPT001",
+    parameter = "recollection",
+    posterior_mean = 0.42,
+    CrI_lb = 0.20,
+    CrI_ub = 0.61,
+    analysis_role = "SEPARATE",
+    analysis_include = "Yes",
+    stringsAsFactors = FALSE
+  )
+  d <- p3_standardize_effect_sheet(mpt, "MPT_Separate_v3")
+  testthat::expect_identical(d$model_id[[1]], "MPT_DESC__MPT001")
+  testthat::expect_true(d$descriptive_only[[1]])
+  spec <- p3_synthetic_spec(
+    d$model_id[[1]],
+    role = "DESCRIPTIVE_MODULE",
+    scale = d$effect_scale[[1]],
+    estimand = d$estimand[[1]]
+  )
+  spec$pe_encoding <- d$pe_encoding[[1]]
+  spec$outcome <- d$outcome[[1]]
+  result <- p3_fit_block(list(spec = spec, data = d), list())$result
+  testthat::expect_equal(result$ci_lb[[1]], 0.20)
+  testthat::expect_equal(result$ci_ub[[1]], 0.61)
+  testthat::expect_true(is.na(result$se[[1]]))
+})
+
 testthat::test_that("P3 synthetic smoke test covers HK, known V, CR2, A008, and replacements", {
   testthat::expect_true(p3_smoke_test())
 })

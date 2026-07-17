@@ -38,8 +38,12 @@ titles or notes and the third row contains the field names.
 
 ## Required sheets and precedence
 
-The v3.1 manifest overrides a same-ID rule in the v3 manifest. Unchanged v3
-modules remain available through the inherited manifest.
+The v3 and v3.1 manifest sheets contain sheet-level policies, not literal model
+IDs. P3 reads each analytic table's `model_id`, expands the matching
+`input_sheet` policy into one specification per model, and uses the v3.1 policy
+for v3.1 sheets. Unchanged v3 modules remain available through their inherited
+sheet policies. The text in `pooling_block` is retained as a guardrail and is
+never treated as a model identifier.
 
 P3 requires the v3.1 QC, raw-effect, manifest, main, sensitivity, covariance,
 quarantine, direction-audit, and decision-lock sheets specified by the v3.1
@@ -85,6 +89,11 @@ Before fitting any model, the runner verifies the following conditions:
   exclusions, and alternative outcomes/models are replacement sensitivities;
 - every included direction is covered by an approved or locked
   `Direction_Audit_v3_1` record.
+
+`Updating_v3` and `MPT_Separate_v3` do not share the ordinary pooled-model
+schema. Their included rows receive unique descriptive IDs and are never pooled
+with another row. Updating records require their reported SE; MPT records retain
+their reported posterior interval without manufacturing an SE or variance.
 
 Any critical failure writes `qc_report.csv` and stops before model fitting. The
 runner never changes a row to make a check pass.

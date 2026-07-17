@@ -323,7 +323,10 @@ p3_standardize_effect_sheet <- function(df, source_sheet) {
   table <- source_sheet
   effect_id <- p3_column(
     df,
-    c("effect_id", "event_id", "analysis_id", "effect_id_quadratic", "record_id"),
+    c(
+      "effect_id", "event_id", "update_id", "mpt_id", "analysis_id",
+      "effect_id_quadratic", "record_id"
+    ),
     table = table
   )
   yi <- p3_column(
@@ -344,6 +347,25 @@ p3_standardize_effect_sheet <- function(df, source_sheet) {
     default = NA_real_,
     table = table
   )
+  model_id <- p3_text(p3_column(
+    df,
+    c("model_id", "analysis_block", "pooling_block"),
+    table = table
+  ))
+  descriptive_only <- grepl("^(Updating|MPT_Separate)", source_sheet)
+  if (descriptive_only && all(!nzchar(model_id))) {
+    prefix <- if (grepl("^Updating", source_sheet)) "UPDATING_DESC" else "MPT_DESC"
+    model_id <- paste(prefix, p3_text(effect_id), sep = "__")
+  }
+  dependency_cluster <- p3_text(p3_column(
+    df,
+    c("dependency_cluster", "independent_cluster", "sample_id", "independent_sample_id"),
+    table = table
+  ))
+  if (descriptive_only) {
+    missing_cluster <- !nzchar(dependency_cluster)
+    dependency_cluster[missing_cluster] <- p3_text(effect_id)[missing_cluster]
+  }
 
   data.frame(
     effect_id = p3_text(effect_id),
@@ -362,34 +384,47 @@ p3_standardize_effect_sheet <- function(df, source_sheet) {
     )),
     estimand = p3_text(p3_column(
       df,
-      c("estimand", "target_estimand", "coefficient_term"),
+      c(
+        "estimand", "target_estimand", "coefficient_term", "parameter",
+        "predictor_or_contrast", "estimate_type"
+      ),
       default = if (grepl("Nonlinear", source_sheet, ignore.case = TRUE)) "quadratic term" else "unspecified",
       table = table
     )),
     pe_encoding = p3_text(p3_column(
       df,
-      c("pe_encoding", "pe_sign_type", "predictor_encoding", "pe_scale"),
+      c("pe_encoding", "pe_sign_type", "predictor_encoding", "pe_scale", "pe_coding"),
       default = "unspecified",
       table = table
     )),
     yi = suppressWarnings(as.numeric(yi)),
     sei = suppressWarnings(as.numeric(sei)),
     vi = suppressWarnings(as.numeric(vi)),
-    model_id = p3_text(p3_column(df, c("model_id", "analysis_block", "pooling_block"), table = table)),
+    reported_ci_lb = suppressWarnings(as.numeric(p3_column(
+      df,
+      c("ci_lb", "ci_lower", "CrI_lb", "delta_CrI_lb"),
+      default = NA_real_,
+      table = table
+    ))),
+    reported_ci_ub = suppressWarnings(as.numeric(p3_column(
+      df,
+      c("ci_ub", "ci_upper", "CrI_ub", "delta_CrI_ub"),
+      default = NA_real_,
+      table = table
+    ))),
+    descriptive_only = rep(descriptive_only, nrow(df)),
+    source_model_id = model_id,
+    model_id = model_id,
     base_model_id = p3_text(p3_column(df, c("base_model_id", "primary_model_id"), table = table)),
     analysis_role = p3_text(p3_column(
       df,
-      c("analysis_role", "analysis_stream", "role"),
+      c("analysis_role", "analysis_stream", "locked_role", "role"),
       default = if (grepl("Sensitivity", source_sheet, ignore.case = TRUE)) "SENSITIVITY" else "PRIMARY",
       table = table
     )),
     analysis_include = p3_text(p3_column(df, c("analysis_include", "include", "run_effect"), table = table)),
     decision_status = p3_text(p3_column(df, c("decision_status", "lock_status"), table = table)),
-    dependency_cluster = p3_text(p3_column(
-      df,
-      c("dependency_cluster", "independent_cluster", "sample_id", "independent_sample_id"),
-      table = table
-    )),
+    dependency_cluster = dependency_cluster,
     shared_control_block = p3_text(p3_column(df, c("shared_control_block", "control_block"), table = table)),
     replacement_for = p3_text(p3_column(
       df,
@@ -418,37 +453,129 @@ p3_standardize_effects <- function(tables) {
   out <- lapply(P3_ANALYTIC_SHEETS, function(sheet) {
     p3_standardize_effect_sheet(tables[[sheet]], sheet)
   })
-  do.call(rbind, out)
+  effects <- do.call(rbind, out)
+
+  source_ids <- p3_text(effects$source_model_id)
+  duplicated_across_sheets <- names(which(vapply(
+    split(effects$source_sheet[nzchar(source_ids)], source_ids[nzchar(source_ids)]),
+    function(x) length(unique(x)) > 1L,
+    logical(1)
+  )))
+  for (source_id in duplicated_across_sheets) {
+    index <- which(source_ids == source_id)
+    sheets <- unique(effects$source_sheet[index])
+    preferred <- sheets[grepl("^Main_", sheets)]
+    preferred <- if (length(preferred) > 0L) preferred[[1]] else sheets[[1]]
+    for (sheet in setdiff(sheets, preferred)) {
+      sheet_index <- index[effects$source_sheet[index] == sheet]
+      suffix <- toupper(gsub("[^A-Za-z0-9]+", "_", sheet))
+      effects$model_id[sheet_index] <- paste0(source_id, "__", suffix)
+    }
+  }
+  effects
 }
 
 p3_standardize_manifest <- function(df, version) {
-  model_id <- p3_text(p3_column(df, c("model_id", "analysis_block"), table = version))
-  keep <- nzchar(model_id)
+  source_sheet <- p3_text(p3_column(
+    df,
+    c("input_sheet", "source_sheet"),
+    table = paste0("Analysis_Manifest_", version)
+  ))
+  keep <- nzchar(source_sheet)
+  n_keep <- sum(keep)
   data.frame(
-    model_id = model_id[keep],
-    run_model = p3_text(p3_column(df, c("run_model", "analysis_include"), default = "Yes", table = version))[keep],
-    analysis_role = p3_text(p3_column(df, c("analysis_role", "role"), default = "PRIMARY", table = version))[keep],
-    source_sheet = p3_text(p3_column(df, c("source_sheet", "input_sheet"), table = version))[keep],
-    effect_scale = p3_text(p3_column(df, c("effect_scale", "effect_measure"), table = version))[keep],
-    estimand = p3_text(p3_column(df, c("estimand", "target_estimand"), table = version))[keep],
-    pe_encoding = p3_text(p3_column(df, c("pe_encoding", "predictor_encoding"), table = version))[keep],
-    outcome = p3_text(p3_column(df, c("outcome", "memory_outcome"), table = version))[keep],
-    model_type = p3_text(p3_column(df, c("model_type", "analysis_method"), table = version))[keep],
-    base_model_id = p3_text(p3_column(df, c("base_model_id", "primary_model_id"), table = version))[keep],
-    sensitivity_rule = p3_text(p3_column(df, c("sensitivity_rule", "replacement_rule"), table = version))[keep],
-    known_v_sheet = p3_text(p3_column(df, c("known_v_sheet", "covariance_sheet", "v_matrix_sheet"), table = version))[keep],
-    allow_mixed_outcome = p3_text(p3_column(df, c("allow_mixed_outcome", "common_estimand_confirmed"), default = "No", table = version))[keep],
-    critical = p3_text(p3_column(df, c("critical", "critical_model"), table = version))[keep],
-    manifest_version = version,
+    source_sheet = source_sheet[keep],
+    evidence_block = p3_text(p3_column(df, c("evidence_block"), table = version))[keep],
+    effect_scale_policy = p3_text(p3_column(df, c("effect_scale"), table = version))[keep],
+    pooling_rule = p3_text(p3_column(df, c("pooling_block"), table = version))[keep],
+    inference_plan = p3_text(p3_column(df, c("inference_plan"), table = version))[keep],
+    guardrail = p3_text(p3_column(df, c("guardrail"), table = version))[keep],
+    manifest_version = rep(version, n_keep),
     stringsAsFactors = FALSE
   )
 }
 
-p3_combine_manifests <- function(tables) {
+p3_combine_manifests <- function(tables, effects) {
   old <- p3_standardize_manifest(tables$Analysis_Manifest_v3, "v3")
   increment <- p3_standardize_manifest(tables$Analysis_Manifest_v3_1, "v3.1")
-  combined <- rbind(old, increment)
-  combined <- combined[!duplicated(combined$model_id, fromLast = TRUE), , drop = FALSE]
+  policies <- rbind(old, increment)
+  policies <- policies[!duplicated(policies$source_sheet, fromLast = TRUE), , drop = FALSE]
+
+  model_rows <- effects[nzchar(p3_text(effects$model_id)), , drop = FALSE]
+  keys <- unique(model_rows[, c("model_id", "source_sheet"), drop = FALSE])
+  if (nrow(keys) == 0L) {
+    stop("No model IDs could be constructed from the analytic sheets.", call. = FALSE)
+  }
+
+  manifest_rows <- lapply(seq_len(nrow(keys)), function(i) {
+    model_id <- keys$model_id[[i]]
+    source_sheet <- keys$source_sheet[[i]]
+    d <- model_rows[
+      model_rows$model_id == model_id & model_rows$source_sheet == source_sheet,
+      ,
+      drop = FALSE
+    ]
+    policy <- policies[policies$source_sheet == source_sheet, , drop = FALSE]
+    if (nrow(policy) != 1L) {
+      stop(
+        "Expected exactly one sheet-level manifest policy for ", source_sheet,
+        "; found ", nrow(policy), ".",
+        call. = FALSE
+      )
+    }
+
+    one_or_blank <- function(x) {
+      values <- p3_unique_nonblank(x)
+      if (length(values) == 1L) values[[1]] else ""
+    }
+    roles <- toupper(p3_unique_nonblank(d$analysis_role))
+    analysis_role <- if (isTRUE(d$descriptive_only[[1]])) {
+      "DESCRIPTIVE_MODULE"
+    } else if (any(grepl("SENSIT|ROBUST|ALT", roles))) {
+      "SENSITIVITY"
+    } else if (length(roles) == 1L) {
+      roles[[1]]
+    } else {
+      "PRIMARY"
+    }
+    base_model_id <- one_or_blank(d$base_model_id)
+    known_v_sheet <- if (grepl("A008", paste(d$row_text, collapse = " | "), ignore.case = TRUE)) {
+      "V_Matrix_A008"
+    } else {
+      ""
+    }
+    sensitivity_details <- p3_unique_nonblank(c(d$sensitivity_rule, policy$guardrail))
+
+    data.frame(
+      model_id = model_id,
+      run_model = "Yes",
+      analysis_role = analysis_role,
+      source_sheet = source_sheet,
+      effect_scale = one_or_blank(d$effect_scale),
+      estimand = one_or_blank(d$estimand),
+      pe_encoding = one_or_blank(d$pe_encoding),
+      outcome = one_or_blank(d$outcome),
+      model_type = policy$inference_plan[[1]],
+      base_model_id = base_model_id,
+      sensitivity_rule = paste(sensitivity_details, collapse = " | "),
+      known_v_sheet = known_v_sheet,
+      allow_mixed_outcome = "No",
+      critical = if (
+        !isTRUE(d$descriptive_only[[1]]) &&
+          !grepl("SENSIT|ROBUST|ALT|GREY", analysis_role)
+      ) "Yes" else "No",
+      manifest_version = policy$manifest_version[[1]],
+      evidence_block = policy$evidence_block[[1]],
+      pooling_rule = policy$pooling_rule[[1]],
+      guardrail = policy$guardrail[[1]],
+      stringsAsFactors = FALSE
+    )
+  })
+  combined <- do.call(rbind, manifest_rows)
+  if (anyDuplicated(combined$model_id)) {
+    duplicates <- unique(combined$model_id[duplicated(combined$model_id)])
+    stop("Constructed manifest has duplicate model IDs: ", paste(duplicates, collapse = ", "), call. = FALSE)
+  }
   rownames(combined) <- NULL
   combined
 }
@@ -654,17 +781,40 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
   }
 
   included <- effects[p3_is_yes(effects$analysis_include), , drop = FALSE]
-  precision_ok <- is.finite(included$yi) & is.finite(included$sei) & included$sei > 0 &
-    is.finite(included$vi) & included$vi > 0
-  variance_ok <- precision_ok & abs(included$vi - included$sei^2) <=
-    pmax(1e-10, 1e-6 * abs(included$vi))
-  if (nrow(included) > 0L && all(variance_ok)) {
-    add(p3_qc_pass("Included precision", paste(nrow(included), "included records have valid yi/sei/vi")))
+  quantitative <- included[!included$descriptive_only, , drop = FALSE]
+  precision_ok <- is.finite(quantitative$yi) & is.finite(quantitative$sei) & quantitative$sei > 0 &
+    is.finite(quantitative$vi) & quantitative$vi > 0
+  variance_ok <- precision_ok & abs(quantitative$vi - quantitative$sei^2) <=
+    pmax(1e-10, 1e-6 * abs(quantitative$vi))
+  if (nrow(quantitative) == 0L || all(variance_ok)) {
+    add(p3_qc_pass(
+      "Included precision",
+      paste(nrow(quantitative), "quantitative records have valid yi/sei/vi")
+    ))
   } else {
-    bad <- included$effect_id[!variance_ok]
+    bad <- quantitative$effect_id[!variance_ok]
     add(p3_qc_fail(
       "Included precision",
       paste("Invalid or inconsistent precision:", paste(bad, collapse = ", "))
+    ))
+  }
+
+  descriptive <- included[included$descriptive_only, , drop = FALSE]
+  descriptive_ok <- is.finite(descriptive$yi) &
+    ((is.finite(descriptive$sei) & descriptive$sei > 0) |
+       (is.finite(descriptive$reported_ci_lb) & is.finite(descriptive$reported_ci_ub)))
+  if (nrow(descriptive) == 0L || all(descriptive_ok)) {
+    add(p3_qc_pass(
+      "Descriptive module precision",
+      paste(nrow(descriptive), "Updating/MPT records retain reported SE or interval precision")
+    ))
+  } else {
+    add(p3_qc_fail(
+      "Descriptive module precision",
+      paste(
+        "Descriptive records lack both reported SE and interval precision:",
+        paste(descriptive$effect_id[!descriptive_ok], collapse = ", ")
+      )
     ))
   }
 
@@ -1260,7 +1410,17 @@ p3_model_metadata <- function(d, spec) {
 
 p3_descriptive_singleton <- function(d, spec) {
   meta <- p3_model_metadata(d, spec)
-  z <- d$yi[[1]] / d$sei[[1]]
+  has_se <- is.finite(d$sei[[1]]) && d$sei[[1]] > 0
+  has_interval <- is.finite(d$reported_ci_lb[[1]]) && is.finite(d$reported_ci_ub[[1]])
+  if (!is.finite(d$yi[[1]]) || (!has_se && !has_interval)) {
+    stop(
+      "Descriptive singleton requires a finite estimate and either a reported SE or interval.",
+      call. = FALSE
+    )
+  }
+  z <- if (has_se) d$yi[[1]] / d$sei[[1]] else NA_real_
+  ci_lb <- if (has_interval) d$reported_ci_lb[[1]] else d$yi[[1]] - stats::qnorm(0.975) * d$sei[[1]]
+  ci_ub <- if (has_interval) d$reported_ci_ub[[1]] else d$yi[[1]] + stats::qnorm(0.975) * d$sei[[1]]
   result <- p3_result_template()
   result[1, ] <- list(
     spec$model_id[[1]],
@@ -1275,10 +1435,10 @@ p3_descriptive_singleton <- function(d, spec) {
     "NOT_APPLICABLE",
     "NOT_APPLICABLE",
     d$yi[[1]],
-    d$sei[[1]],
-    d$yi[[1]] - stats::qnorm(0.975) * d$sei[[1]],
-    d$yi[[1]] + stats::qnorm(0.975) * d$sei[[1]],
-    2 * stats::pnorm(abs(z), lower.tail = FALSE),
+    if (has_se) d$sei[[1]] else NA_real_,
+    ci_lb,
+    ci_ub,
+    if (has_se) 2 * stats::pnorm(abs(z), lower.tail = FALSE) else NA_real_,
     NA_real_, NA_real_, NA_real_, NA_real_,
     meta$sheets,
     meta$sensitivity_rule
@@ -1395,6 +1555,11 @@ p3_fit_block <- function(block, tables) {
   spec <- block$spec
   compatibility <- p3_check_compatibility(d, spec)
   if (!compatibility$ok) stop(compatibility$reason, call. = FALSE)
+  if (nrow(d) == 1L) {
+    result <- p3_descriptive_singleton(d, spec)
+    result$analysis_data <- d
+    return(result)
+  }
   if (any(!is.finite(d$yi) | !is.finite(d$sei) | d$sei <= 0 | !is.finite(d$vi) | d$vi <= 0)) {
     stop("Included block contains missing or invalid precision; no imputation was used.", call. = FALSE)
   }
@@ -1407,12 +1572,6 @@ p3_fit_block <- function(block, tables) {
       stop("A008 requires exactly two non-missing shared_control_block clusters.", call. = FALSE)
     }
     d$dependency_cluster <- a008_clusters
-  }
-
-  if (nrow(d) == 1L) {
-    result <- p3_descriptive_singleton(d, spec)
-    result$analysis_data <- d
-    return(result)
   }
 
   counts <- p3_cluster_counts(d)
@@ -1948,7 +2107,7 @@ p3_run_analysis <- function(
   tables <- p3_read_workbook(paths$input_path)
   hash_after_read <- p3_sha256(paths$input_path)
   effects <- p3_standardize_effects(tables)
-  manifest <- p3_combine_manifests(tables)
+  manifest <- p3_combine_manifests(tables, effects)
   qc <- p3_validate_input_qc(tables, effects, manifest)
   qc <- rbind(
     qc,
@@ -2273,6 +2432,10 @@ p3_synthetic_effects <- function(ids, clusters, model_id, yi, vi) {
     yi = yi,
     sei = sqrt(vi),
     vi = vi,
+    reported_ci_lb = NA_real_,
+    reported_ci_ub = NA_real_,
+    descriptive_only = FALSE,
+    source_model_id = model_id,
     model_id = model_id,
     base_model_id = "",
     analysis_role = "PRIMARY",
