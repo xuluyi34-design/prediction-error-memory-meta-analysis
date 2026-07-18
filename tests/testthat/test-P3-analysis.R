@@ -87,14 +87,20 @@ testthat::test_that("P3 expands sheet-level manifests into unique model specific
   )
   effects <- rbind(
     p3_synthetic_effects("E1", "C1", "MODEL_A", 0.1, 0.04),
-    p3_synthetic_effects("E2", "C2", "MODEL_B", 0.2, 0.04)
+    p3_synthetic_effects("E2", "C2", "MODEL_B", 0.2, 0.04),
+    p3_synthetic_effects("E3", "C3", "MODEL_EXCLUDED", 0.3, 0.04)
   )
   effects$source_sheet <- "Main_LogOR_v3_1"
+  effects$analysis_include[[3]] <- "No"
   tables <- list(Analysis_Manifest_v3 = inherited, Analysis_Manifest_v3_1 = policy)
   expanded <- p3_combine_manifests(tables, effects)
-  testthat::expect_setequal(expanded$model_id, c("MODEL_A", "MODEL_B"))
+  testthat::expect_setequal(expanded$model_id, c("MODEL_A", "MODEL_B", "MODEL_EXCLUDED"))
   testthat::expect_true(all(expanded$source_sheet == "Main_LogOR_v3_1"))
   testthat::expect_true(all(expanded$manifest_version == "v3.1"))
+  testthat::expect_identical(
+    expanded$run_model[expanded$model_id == "MODEL_EXCLUDED"],
+    "No"
+  )
 
   empty_policy <- p3_standardize_manifest(policy[0, , drop = FALSE], "v3.1")
   testthat::expect_equal(nrow(empty_policy), 0L)
@@ -126,6 +132,75 @@ testthat::test_that("MPT records remain descriptive and retain reported credible
   testthat::expect_equal(result$ci_lb[[1]], 0.20)
   testthat::expect_equal(result$ci_ub[[1]], 0.61)
   testthat::expect_true(is.na(result$se[[1]]))
+})
+
+testthat::test_that("special inverted-S rows use the recorded linear coefficient slots", {
+  nonlinear <- data.frame(
+    effect_id = "V3N001",
+    model_id = "NONLINEAR_SPECIAL",
+    pe_coding = "Best-fitting inverted-S signed aversive PE function",
+    beta_linear = 0.27,
+    se_linear = 0.10074626865671642,
+    vi_linear = 0.010149810648251281,
+    beta_quadratic = NA_real_,
+    se_quadratic = NA_real_,
+    vi_quadratic = NA_real_,
+    analysis_include = "Yes",
+    stringsAsFactors = FALSE
+  )
+  d <- p3_standardize_effect_sheet(nonlinear, "Main_Nonlinear_v3_1")
+  testthat::expect_equal(d$yi[[1]], nonlinear$beta_linear[[1]])
+  testthat::expect_equal(d$sei[[1]], nonlinear$se_linear[[1]])
+  testthat::expect_equal(d$vi[[1]], nonlinear$vi_linear[[1]])
+  testthat::expect_identical(d$estimand[[1]], "special inverted-S function")
+})
+
+testthat::test_that("cumulative lock metadata defines roles and same-sample replacements", {
+  effects <- rbind(
+    p3_synthetic_effects("PRIMARY_ID", "PRIMARY_CLUSTER", "PRIMARY_MODEL", 0.1, 0.04),
+    p3_synthetic_effects("ALT_ID", "SOURCE_ALT_CLUSTER", "ALT_MODEL", 0.2, 0.04)
+  )
+  effects$source_sheet <- "Module_SMD_v3_1"
+  effects$study_id[[1]] <- "ST123"
+  effects$row_text[[1]] <- "Primary record for ST123"
+  lock <- data.frame(
+    source_analysis_id = c("PRIMARY_ID", "ALT_ID"),
+    analysis_include = "Yes",
+    include_primary = c("Yes", "No"),
+    include_sensitivity = c("No", "Yes"),
+    include_robustness = "No",
+    include_descriptive = "No",
+    decision_status = c("LOCKED_PRIMARY", "LOCKED_SENSITIVITY"),
+    dependency_cluster = c("PRIMARY_CLUSTER", "SOURCE_ALT_CLUSTER"),
+    duplicate_or_alternative_of = c("", "Preferred effect in ST123"),
+    direction_rule = "Higher values favor the locked PE direction",
+    source_version = "v3.1",
+    stringsAsFactors = FALSE
+  )
+  tables <- list(
+    Effect_Decision_Lock_v3_1 = lock,
+    Raw_Effects_v3_1 = data.frame(
+      effect_id = c("PRIMARY_ID", "ALT_ID"),
+      candidate_id = c("S023", "S023"),
+      stringsAsFactors = FALSE
+    ),
+    Direction_Audit_v3_1 = data.frame(
+      effect_id = c("PRIMARY_ID", "ALT_ID"),
+      candidate_id = c("S023", "S023"),
+      audit_status = c("CHECKED", "CHECKED_V3_1"),
+      stringsAsFactors = FALSE
+    )
+  )
+  enriched <- p3_enrich_effect_metadata(effects, tables)
+  alt <- enriched[enriched$effect_id == "ALT_ID", , drop = FALSE]
+  testthat::expect_identical(alt$analysis_role[[1]], "SENSITIVITY")
+  testthat::expect_identical(alt$replacement_for[[1]], "PRIMARY_ID")
+  testthat::expect_identical(alt$source_replacement_for[[1]], "Preferred effect in ST123")
+  testthat::expect_identical(alt$base_model_id[[1]], "PRIMARY_MODEL")
+  testthat::expect_identical(alt$dependency_cluster[[1]], "PRIMARY_CLUSTER")
+  testthat::expect_identical(alt$source_dependency_cluster[[1]], "SOURCE_ALT_CLUSTER")
+  testthat::expect_identical(alt$candidate_id[[1]], "S023")
+  testthat::expect_identical(alt$direction_status[[1]], "CHECKED_V3_1")
 })
 
 testthat::test_that("P3 synthetic smoke test covers HK, known V, CR2, A008, and replacements", {
@@ -170,6 +245,48 @@ testthat::test_that("P3 compatibility gate rejects mixed scales and encodings", 
   testthat::expect_false(p3_check_compatibility(d, spec)$ok)
 })
 
+testthat::test_that("frozen P2 compatibility exceptions are model-ID scoped", {
+  policy <- data.frame(
+    evidence_block = "Frozen P2",
+    input_sheet = "Main_LogOR_v3_1",
+    effect_scale = "logOR",
+    pooling_block = "locked model_id",
+    inference_plan = "REML + Hartung-Knapp",
+    guardrail = "Frozen grouping",
+    stringsAsFactors = FALSE
+  )
+  inherited <- data.frame(
+    evidence_block = "Inherited",
+    input_sheet = "Event_Temporal_v3",
+    effect_scale = "native",
+    pooling_block = "model_id",
+    inference_plan = "Existing rules",
+    guardrail = "Inherited",
+    stringsAsFactors = FALSE
+  )
+  d <- p3_synthetic_effects(
+    c("F1", "F2"), c("FC1", "FC2"), "MAIN_LOGOR_BINARY_CAT",
+    c(0.1, 0.2), c(0.04, 0.04)
+  )
+  d$source_sheet <- "Main_LogOR_v3_1"
+  d$outcome <- c("Locked binary memory outcome A", "Locked binary memory outcome B")
+  manifest <- p3_combine_manifests(
+    list(Analysis_Manifest_v3 = inherited, Analysis_Manifest_v3_1 = policy),
+    d
+  )
+  testthat::expect_identical(manifest$allow_mixed_outcome[[1]], "Yes")
+  testthat::expect_true(p3_check_compatibility(d, manifest)$ok)
+
+  d$model_id <- "UNLOCKED_NEW_MODEL"
+  d$source_model_id <- "UNLOCKED_NEW_MODEL"
+  manifest_new <- p3_combine_manifests(
+    list(Analysis_Manifest_v3 = inherited, Analysis_Manifest_v3_1 = policy),
+    d
+  )
+  testthat::expect_identical(manifest_new$allow_mixed_outcome[[1]], "No")
+  testthat::expect_false(p3_check_compatibility(d, manifest_new)$ok)
+})
+
 testthat::test_that("P3 A008 model requires five effects and preserves order", {
   d <- p3_synthetic_effects(
     paste0("A", 1:4), c("C1", "C1", "C2", "C2"), "A008_BAD",
@@ -194,28 +311,68 @@ p3_qc_fixture <- function() {
     d
   }))
   s041_row <- which(effects$source_sheet == "Main_Nonlinear_v3_1")[[1]]
-  effects$study_id[[s041_row]] <- "S041"
+  effects$candidate_id[[s041_row]] <- "S041"
+  effects$study_id[[s041_row]] <- "ST142"
   effects$dependency_cluster[[s041_row]] <- "S041_RECRUITMENT"
   effects$row_text[[s041_row]] <- "S041 Paradigm 1 primary representative"
 
+  s041_sensitivity <- effects[s041_row, , drop = FALSE]
+  s041_sensitivity$effect_id <- "QC_S041_P2"
+  s041_sensitivity$source_sheet <- "Module_Nonlinear_v3_1"
+  s041_sensitivity$source_model_id <- "QC_S041_SENS"
+  s041_sensitivity$model_id <- "QC_S041_SENS"
+  s041_sensitivity$base_model_id <- effects$model_id[[s041_row]]
+  s041_sensitivity$analysis_role <- "SENSITIVITY"
+  s041_sensitivity$replacement_for <- effects$effect_id[[s041_row]]
+  s041_sensitivity$row_text <- "S041 Paradigm 2 same-recruitment replacement sensitivity"
+
   s040_row <- which(effects$source_sheet == "Main_LogOR_v3_1")[[1]]
-  effects$study_id[[s040_row]] <- "S040"
+  effects$candidate_id[[s040_row]] <- "S040"
+  effects$study_id[[s040_row]] <- "ST141"
   effects$row_text[[s040_row]] <- "S040 raw paired behavioral primary; adjusted model not reproducible limitation"
 
   s023_row <- which(effects$source_sheet == "Main_SMD_v3_1")[[1]]
-  effects$study_id[[s023_row]] <- "S023"
+  effects$candidate_id[[s023_row]] <- "S023"
+  effects$study_id[[s023_row]] <- "ST111"
+  effects$outcome[[s023_row]] <- "recollection"
+  effects$dependency_cluster[[s023_row]] <- "S023_Experiment_1_R_F"
   effects$row_text[[s023_row]] <- "S023 Experiment 1 recollection primary outcome"
+
+  s023_exp2 <- effects[s023_row, , drop = FALSE]
+  s023_exp2$effect_id <- "QC_S023_EXP2"
+  s023_exp2$source_sheet <- "Module_SMD_v3_1"
+  s023_exp2$source_model_id <- "QC_S023_EXP2_SENS"
+  s023_exp2$model_id <- "QC_S023_EXP2_SENS"
+  s023_exp2$base_model_id <- ""
+  s023_exp2$analysis_role <- "SENSITIVITY"
+  s023_exp2$dependency_cluster <- "S023_Experiment_2_R_F"
+  s023_exp2$source_dependency_cluster <- "S023_Experiment_2_R_F"
+  s023_exp2$study_id <- "ST112"
+  s023_exp2$row_text <- "S023 Experiment 2 recollection sensitivity-only source clarification"
+
+  s010 <- p3_synthetic_effects("QC_S010_N71", "S010_N71", "QC_S010_SENS", 0.1, 0.04)
+  s010$candidate_id <- "S010"
+  s010$source_sheet <- "Sensitivity_LogOR_v3_1"
+  s010$analysis_role <- "SENSITIVITY"
+  s010$row_text <- "S010 N=71 public subset sensitivity only; does not replace N=76"
+
+  s021 <- p3_synthetic_effects("QC_S021_N35", "S021_N35", "QC_S021_SENS", 0.1, 0.04)
+  s021$candidate_id <- "S021"
+  s021$source_sheet <- "Module_SMD_v3_1"
+  s021$analysis_role <- "SENSITIVITY"
+  s021$row_text <- "S021 young adult N=35 subgroup sensitivity only; not a replacement"
 
   s016 <- p3_synthetic_effects(
     paste0("QC_S016_E", 1:4), paste0("QC_S016_C", 1:4), paste0("QC_S016_M", 1:4),
     yi = c(0.10, 0.12, 0.08, 0.11), vi = rep(0.04, 4)
   )
-  s016$study_id <- "S016"
+  s016$candidate_id <- "S016"
+  s016$study_id <- paste0("ST", 94:97)
   s016$source_sheet <- "Main_Nonlinear_v3_1"
   s016$effect_scale <- "nonlinear coefficient"
   s016$estimand <- "quadratic term"
   s016$row_text <- paste("S016 Experiment", 1:4, "quadratic primary")
-  effects <- rbind(effects, s016)
+  effects <- rbind(effects, s041_sensitivity, s023_exp2, s010, s021, s016)
 
   manifest <- do.call(rbind, lapply(seq_len(nrow(effects)), function(i) {
     spec <- p3_synthetic_spec(
@@ -224,6 +381,8 @@ p3_qc_fixture <- function() {
       estimand = effects$estimand[[i]]
     )
     spec$source_sheet <- effects$source_sheet[[i]]
+    spec$analysis_role <- effects$analysis_role[[i]]
+    spec$base_model_id <- effects$base_model_id[[i]]
     spec
   }))
 
@@ -256,7 +415,8 @@ p3_qc_fixture <- function() {
   )
   quarantine <- data.frame(
     effect_id = c("S023_Q1", "S023_Q2"),
-    study_id = "S023",
+    candidate_id = "S023",
+    study_id = "ST113",
     experiment = "Experiment 3",
     stringsAsFactors = FALSE
   )
@@ -266,7 +426,7 @@ p3_qc_fixture <- function() {
     Raw_Effects_v3 = raw_v3,
     Raw_Effects_v3_1 = raw_v31,
     Quarantined_Effects_v3_1 = quarantine,
-    Direction_Audit_v3_1 = data.frame(effect_id = effects$effect_id, status = "LOCKED"),
+    Direction_Audit_v3_1 = data.frame(effect_id = effects$effect_id, audit_status = "CHECKED_V3_1"),
     Effect_Decision_Lock_v3_1 = rescue_lock
   )
   attr(tables, "rescue_sheet") <- "Rescue_Resolution_v3_1"
@@ -280,7 +440,8 @@ testthat::test_that("P3 hard QC accepts the synthetic contract and rejects S023 
 
   leaked <- fixture$effects
   leaked$row_text[[1]] <- "S023 Experiment 3 quarantined effect"
-  leaked$study_id[[1]] <- "S023"
+  leaked$candidate_id[[1]] <- "S023"
+  leaked$dependency_cluster[[1]] <- "S023_Experiment_3"
   qc_leaked <- p3_validate_input_qc(fixture$tables, leaked, fixture$manifest)
   target <- qc_leaked[qc_leaked$check == "S023 Experiment 3 quarantine", , drop = FALSE]
   testthat::expect_identical(target$status[[1]], "FAIL")

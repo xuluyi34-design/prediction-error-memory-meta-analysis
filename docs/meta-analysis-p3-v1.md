@@ -64,6 +64,15 @@ not treat the seven-row resolution sheet as an effect-level lock. Legacy rescue
 sheet names remain accepted for compatibility, but they must expose the same
 candidate/article mapping.
 
+The analytic sheets' `analysis_stream` field identifies a sheet/module stream;
+it is not a primary-versus-sensitivity role. P3 joins each analytic
+`effect_id` to `Effect_Decision_Lock_v3_1` (`source_analysis_id`) and derives
+the role from the lock's `include_primary`, `include_sensitivity`,
+`include_robustness`, and `include_descriptive` fields. Candidate IDs and
+direction-audit statuses are joined from `Raw_Effects_v3_1` and
+`Direction_Audit_v3_1`. These joins occur only in memory and do not alter the
+workbook.
+
 ## Hard QC stop
 
 Before fitting any model, the runner verifies the following conditions:
@@ -85,15 +94,25 @@ Before fitting any model, the runner verifies the following conditions:
 - exactly two S023 Experiment 3 records remain quarantined and none enters an
   analytic sheet;
 - S023 familiarity does not add an independent cluster;
-- S041 Paradigm 2, the S010 N=71 subset, the S021 N=35 subgroup, boundary
-  exclusions, and alternative outcomes/models are replacement sensitivities;
-- every included direction is covered by an approved or locked
-  `Direction_Audit_v3_1` record.
+- S041 Paradigm 2 is a same-recruitment replacement for Paradigm 1;
+- the S010 N=71 public subset and S021 N=35 subgroup are standalone
+  sensitivity-only records and do not replace the published N=76 or
+  prespecified all-age estimates;
+- boundary exclusions and alternative outcomes/models replace their locked
+  same-sample effects and cannot add an independent cluster;
+- current v3/v3.1 effects have a `CHECKED`, `CHECKED_V3_1`, approved, or locked
+  direction-audit record; inherited P2/Event rows retain a non-empty locked
+  source direction rule.
 
 `Updating_v3` and `MPT_Separate_v3` do not share the ordinary pooled-model
 schema. Their included rows receive unique descriptive IDs and are never pooled
 with another row. Updating records require their reported SE; MPT records retain
 their reported posterior interval without manufacturing an SE or variance.
+
+The special S034 inverted-S record stores its locked coefficient and precision
+in the workbook's linear coefficient slots. P3 reads those recorded fields as a
+special inverted-S estimand when the quadratic slots are blank; it does not
+recalculate or reinterpret the effect as a quadratic coefficient.
 
 Any critical failure writes `qc_report.csv` and stops before model fitting. The
 runner never changes a row to make a check pass.
@@ -120,17 +139,31 @@ nonlinear coefficients, inverted-S functions, Bayesian MPT parameters,
 incompatible PE encodings, and incompatible memory estimands separate. P3 does
 not fit a single omnibus PE effect.
 
+Three explicit carry-forward exceptions preserve locked P2 model groupings
+without broadening them: `MAIN_LOGOR_BINARY_CAT` and `MAIN_SMD_GZ` retain their
+predefined common binary-memory/SMD estimands despite more specific row-level
+outcome labels, and `MAIN_NONLINEAR_Q_EXPLORATORY` treats its two descriptions
+of the locked orthogonal-polynomial coding as equivalent for its quadratic
+estimand. These model IDs are allowlisted in code; no v3.1 model is admitted by
+this exception. An alternative-outcome sensitivity may also mix the unchanged
+base outcome with explicitly mapped same-sample replacements, but it remains
+labeled as a sensitivity analysis and cannot change independent `k`.
+
 For S016, the four quadratic terms remain the primary estimand. When all four
 recorded linear terms and their linear-quadratic covariances are available, P3
 also fits an explicitly labeled joint L/Q ancillary model. It does not combine
 those native coefficients with S041's one-SD orthogonal-polynomial coefficient.
 
-## Replacement sensitivities
+## Sensitivity datasets
 
 A replacement row must identify `replacement_for`. The builder removes that
 primary effect before adding its alternative and stops if the number of
 independent clusters changes. Primary and sensitivity estimates are written to
 separate files.
+
+S010 N=71 and S021 N=35 are intentionally different: the workbook states that
+neither can replace its prespecified main estimate. They therefore remain
+standalone sensitivity-only blocks with an empty `replacement_for` field.
 
 Risk of bias remains `PROVISIONAL_NOT_LOCKED`. Without a separate final-locked
 file supplied through `--rob-input=` or `META_ANALYSIS_ROB_INPUT`, P3 records:

@@ -61,6 +61,17 @@ P3_RESCUE_SHEET_CANDIDATES <- c(
   "Rescue_Lock_v3_1"
 )
 
+# These are frozen P2 pooling decisions carried forward by model_id. Their
+# row-level labels differ, but the locked analyses use one common scale and
+# estimand. No new P3 model is added to either allowlist.
+P3_FROZEN_MIXED_OUTCOME_MODELS <- c(
+  "MAIN_LOGOR_BINARY_CAT",
+  "MAIN_SMD_GZ"
+)
+P3_FROZEN_EQUIVALENT_PE_CODING_MODELS <- c(
+  "MAIN_NONLINEAR_Q_EXPLORATORY"
+)
+
 p3_require_packages <- function() {
   missing <- P3_REQUIRED_PACKAGES[!vapply(
     P3_REQUIRED_PACKAGES,
@@ -236,8 +247,24 @@ p3_find_column <- function(df, candidates, required = FALSE, table = "table") {
 
 p3_column <- function(df, candidates, default = NA_character_, table = "table") {
   column <- p3_find_column(df, candidates, required = FALSE, table = table)
-  if (is.na(column)) return(rep(default, nrow(df)))
+  if (is.na(column)) {
+    if (length(default) == nrow(df)) return(default)
+    return(rep(default, nrow(df)))
+  }
   df[[column]]
+}
+
+p3_numeric_coalesce <- function(df, candidates, default = NA_real_) {
+  out <- rep(default, nrow(df))
+  available <- names(df)
+  for (candidate in candidates) {
+    index <- match(tolower(candidate), tolower(available), nomatch = 0L)
+    if (index == 0L) next
+    value <- suppressWarnings(as.numeric(df[[available[[index]]]]))
+    replace <- !is.finite(out) & is.finite(value)
+    out[replace] <- value[replace]
+  }
+  out
 }
 
 p3_text <- function(x) {
@@ -329,23 +356,17 @@ p3_standardize_effect_sheet <- function(df, source_sheet) {
     ),
     table = table
   )
-  yi <- p3_column(
+  yi <- p3_numeric_coalesce(
     df,
-    c("yi", "estimate", "beta_quadratic", "coefficient", "posterior_mean"),
-    default = NA_real_,
-    table = table
+    c("yi", "estimate", "beta_quadratic", "beta_linear", "coefficient", "posterior_mean")
   )
-  sei <- p3_column(
+  sei <- p3_numeric_coalesce(
     df,
-    c("sei", "se", "se_quadratic", "sei_quadratic", "posterior_sd"),
-    default = NA_real_,
-    table = table
+    c("sei", "se", "se_quadratic", "sei_quadratic", "se_linear", "posterior_sd")
   )
-  vi <- p3_column(
+  vi <- p3_numeric_coalesce(
     df,
-    c("vi", "variance", "vi_quadratic", "sampling_variance", "posterior_variance"),
-    default = NA_real_,
-    table = table
+    c("vi", "variance", "vi_quadratic", "sampling_variance", "vi_linear", "posterior_variance")
   )
   model_id <- p3_text(p3_column(
     df,
@@ -367,8 +388,21 @@ p3_standardize_effect_sheet <- function(df, source_sheet) {
     dependency_cluster[missing_cluster] <- p3_text(effect_id)[missing_cluster]
   }
 
+  nonlinear_quadratic <- is.finite(p3_numeric_coalesce(df, c("beta_quadratic")))
+  nonlinear_special <- grepl(
+    "INVERTED[-_ ]?S|SPECIAL",
+    p3_text(p3_column(df, c("pe_coding", "model_family", "notes"), table = table)),
+    ignore.case = TRUE
+  )
+  default_estimand <- if (grepl("Nonlinear", source_sheet, ignore.case = TRUE)) {
+    ifelse(nonlinear_quadratic, "quadratic term", ifelse(nonlinear_special, "special inverted-S function", "nonlinear coefficient"))
+  } else {
+    "unspecified"
+  }
+
   data.frame(
     effect_id = p3_text(effect_id),
+    candidate_id = p3_text(p3_column(df, c("candidate_id"), table = table)),
     article_id = p3_text(p3_column(df, c("article_id", "report_id", "source_id"), table = table)),
     study_id = p3_text(p3_column(df, c("study_id", "experiment_id", "study"), table = table)),
     sample_id = p3_text(p3_column(df, c("sample_id", "independent_sample_id"), table = table)),
@@ -388,7 +422,7 @@ p3_standardize_effect_sheet <- function(df, source_sheet) {
         "estimand", "target_estimand", "coefficient_term", "parameter",
         "predictor_or_contrast", "estimate_type"
       ),
-      default = if (grepl("Nonlinear", source_sheet, ignore.case = TRUE)) "quadratic term" else "unspecified",
+      default = default_estimand,
       table = table
     )),
     pe_encoding = p3_text(p3_column(
@@ -418,15 +452,24 @@ p3_standardize_effect_sheet <- function(df, source_sheet) {
     base_model_id = p3_text(p3_column(df, c("base_model_id", "primary_model_id"), table = table)),
     analysis_role = p3_text(p3_column(
       df,
-      c("analysis_role", "analysis_stream", "locked_role", "role"),
+      c("analysis_role", "locked_role", "role"),
       default = if (grepl("Sensitivity", source_sheet, ignore.case = TRUE)) "SENSITIVITY" else "PRIMARY",
       table = table
     )),
     analysis_include = p3_text(p3_column(df, c("analysis_include", "include", "run_effect"), table = table)),
     decision_status = p3_text(p3_column(df, c("decision_status", "lock_status"), table = table)),
+    direction_rule = p3_text(p3_column(df, c("direction_rule", "direction"), table = table)),
+    direction_status = p3_text(p3_column(df, c("direction_status", "audit_status"), table = table)),
+    source_version = p3_text(p3_column(df, c("source_version", "data_version"), table = table)),
     dependency_cluster = dependency_cluster,
+    source_dependency_cluster = dependency_cluster,
     shared_control_block = p3_text(p3_column(df, c("shared_control_block", "control_block"), table = table)),
     replacement_for = p3_text(p3_column(
+      df,
+      c("replacement_for", "replaces_effect_id", "replace_effect_id"),
+      table = table
+    )),
+    source_replacement_for = p3_text(p3_column(
       df,
       c("replacement_for", "replaces_effect_id", "replace_effect_id"),
       table = table
@@ -443,6 +486,179 @@ p3_standardize_effect_sheet <- function(df, source_sheet) {
     row_text = p3_row_text(df),
     stringsAsFactors = FALSE
   )
+}
+
+p3_lock_analysis_role <- function(lock) {
+  n <- nrow(lock)
+  role <- rep("", n)
+  primary <- p3_is_yes(p3_column(lock, c("include_primary"), default = "No"))
+  sensitivity <- p3_is_yes(p3_column(lock, c("include_sensitivity"), default = "No"))
+  robustness <- p3_is_yes(p3_column(lock, c("include_robustness"), default = "No"))
+  descriptive <- p3_is_yes(p3_column(lock, c("include_descriptive"), default = "No"))
+  role[descriptive] <- "DESCRIPTIVE"
+  role[robustness] <- "ROBUSTNESS"
+  role[sensitivity] <- "SENSITIVITY"
+  role[primary] <- "PRIMARY"
+
+  status <- toupper(p3_text(p3_column(lock, c("decision_status", "lock_status"))))
+  missing <- !nzchar(role)
+  role[missing & grepl("PRIMARY", status)] <- "PRIMARY"
+  role[missing & grepl("SENSIT", status)] <- "SENSITIVITY"
+  role[missing & grepl("ROBUST", status)] <- "ROBUSTNESS"
+  role[missing & grepl("ALTERNATIVE|DEPENDENT", status)] <- "ALTERNATIVE"
+  role[missing & grepl("DESCRIPT|SEPARATE", status)] <- "DESCRIPTIVE"
+  role
+}
+
+p3_enrich_effect_metadata <- function(effects, tables) {
+  lock <- tables$Effect_Decision_Lock_v3_1
+  lock_id_col <- p3_find_column(
+    lock,
+    c("effect_id", "source_analysis_id", "record_id", "source_effect_id"),
+    required = TRUE,
+    table = "Effect_Decision_Lock_v3_1"
+  )
+  lock_ids <- p3_text(lock[[lock_id_col]])
+  duplicated_lock_ids <- unique(lock_ids[nzchar(lock_ids) & duplicated(lock_ids)])
+  if (length(duplicated_lock_ids) > 0L) {
+    stop("Effect_Decision_Lock_v3_1 has duplicate analysis IDs: ", paste(duplicated_lock_ids, collapse = ", "), call. = FALSE)
+  }
+  lock_match <- match(effects$effect_id, lock_ids)
+  matched <- which(!is.na(lock_match))
+  if (length(matched) > 0L) {
+    lock_rows <- lock[lock_match[matched], , drop = FALSE]
+    lock_include <- p3_text(p3_column(lock_rows, c("analysis_include", "include", "run_effect")))
+    replace <- nzchar(lock_include)
+    effects$analysis_include[matched[replace]] <- lock_include[replace]
+
+    lock_status <- p3_text(p3_column(lock_rows, c("decision_status", "lock_status")))
+    replace <- nzchar(lock_status)
+    effects$decision_status[matched[replace]] <- lock_status[replace]
+
+    lock_role <- p3_lock_analysis_role(lock_rows)
+    replace <- nzchar(lock_role)
+    effects$analysis_role[matched[replace]] <- lock_role[replace]
+
+    lock_direction <- p3_text(p3_column(lock_rows, c("direction_rule", "direction")))
+    replace <- nzchar(lock_direction)
+    effects$direction_rule[matched[replace]] <- lock_direction[replace]
+
+    lock_version <- p3_text(p3_column(lock_rows, c("source_version", "data_version")))
+    replace <- nzchar(lock_version)
+    effects$source_version[matched[replace]] <- lock_version[replace]
+
+    lock_replacement <- p3_text(p3_column(
+      lock_rows,
+      c("duplicate_or_alternative_of", "replacement_for", "replaces_effect_id")
+    ))
+    replace <- nzchar(lock_replacement)
+    effects$replacement_for[matched[replace]] <- lock_replacement[replace]
+    effects$source_replacement_for[matched[replace]] <- lock_replacement[replace]
+
+    lock_cluster <- p3_text(p3_column(lock_rows, c("dependency_cluster", "independent_cluster")))
+    replace <- !nzchar(effects$dependency_cluster[matched]) & nzchar(lock_cluster)
+    effects$dependency_cluster[matched[replace]] <- lock_cluster[replace]
+    effects$source_dependency_cluster[matched[replace]] <- lock_cluster[replace]
+  }
+
+  raw <- tables$Raw_Effects_v3_1
+  raw_id_col <- p3_find_column(raw, c("effect_id", "raw_effect_id", "record_id"), TRUE, "Raw_Effects_v3_1")
+  raw_candidate_col <- p3_find_column(raw, c("candidate_id"), TRUE, "Raw_Effects_v3_1")
+  raw_match <- match(effects$effect_id, p3_text(raw[[raw_id_col]]))
+  has_raw <- which(!is.na(raw_match))
+  if (length(has_raw) > 0L) {
+    candidate <- p3_text(raw[[raw_candidate_col]][raw_match[has_raw]])
+    replace <- nzchar(candidate)
+    effects$candidate_id[has_raw[replace]] <- candidate[replace]
+  }
+
+  direction <- tables$Direction_Audit_v3_1
+  direction_id_col <- p3_find_column(direction, c("effect_id", "source_effect_id", "record_id"), TRUE, "Direction_Audit_v3_1")
+  direction_candidate_col <- p3_find_column(direction, c("candidate_id"), FALSE, "Direction_Audit_v3_1")
+  direction_status_col <- p3_find_column(
+    direction,
+    c("status", "direction_status", "audit_status", "decision_status"),
+    TRUE,
+    "Direction_Audit_v3_1"
+  )
+  direction_match <- match(effects$effect_id, p3_text(direction[[direction_id_col]]))
+  has_direction <- which(!is.na(direction_match))
+  if (length(has_direction) > 0L) {
+    effects$direction_status[has_direction] <- p3_text(direction[[direction_status_col]][direction_match[has_direction]])
+    if (!is.na(direction_candidate_col)) {
+      candidate <- p3_text(direction[[direction_candidate_col]][direction_match[has_direction]])
+      replace <- nzchar(candidate)
+      effects$candidate_id[has_direction[replace]] <- candidate[replace]
+    }
+  }
+
+  boundary <- which(
+    p3_is_yes(effects$analysis_include) &
+      !nzchar(effects$replacement_for) &
+      grepl("BOUNDARY.EXCLUD", effects$row_text, ignore.case = TRUE)
+  )
+  for (i in boundary) {
+    candidates <- which(
+      p3_is_yes(effects$analysis_include) &
+        effects$source_sheet == effects$source_sheet[[i]] &
+        effects$dependency_cluster == effects$dependency_cluster[[i]] &
+        effects$outcome == effects$outcome[[i]] &
+        !grepl("BOUNDARY.EXCLUD|ROBUST", paste(effects$analysis_role, effects$decision_status, effects$row_text), ignore.case = TRUE)
+    )
+    if (length(candidates) == 1L) effects$replacement_for[[i]] <- effects$effect_id[[candidates]]
+  }
+
+  textual_references <- which(
+    nzchar(effects$replacement_for) &
+      !effects$replacement_for %in% effects$effect_id
+  )
+  for (i in textual_references) {
+    reference <- effects$replacement_for[[i]]
+    study_match <- regexpr("ST[0-9]{3}", reference, ignore.case = TRUE)
+    study_token <- if (study_match[[1]] > 0L) {
+      toupper(regmatches(reference, study_match))
+    } else {
+      ""
+    }
+    if (!nzchar(study_token)) next
+    candidates <- which(
+      p3_is_yes(effects$analysis_include) &
+        grepl("PRIMARY", toupper(effects$analysis_role)) &
+        effects$effect_id != effects$effect_id[[i]] &
+        (
+          toupper(effects$study_id) == study_token |
+            p3_matches_study(effects$row_text, study_token)
+        )
+    )
+    if (length(candidates) == 1L) {
+      effects$replacement_for[[i]] <- effects$effect_id[[candidates]]
+    }
+  }
+
+  replacement_rows <- which(nzchar(effects$replacement_for))
+  for (i in replacement_rows) {
+    target <- which(effects$effect_id == effects$replacement_for[[i]])
+    if (length(target) != 1L) next
+    effects$base_model_id[[i]] <- effects$model_id[[target]]
+    if (nzchar(effects$dependency_cluster[[target]])) {
+      effects$dependency_cluster[[i]] <- effects$dependency_cluster[[target]]
+    }
+  }
+
+  replacement_keys <- unique(paste(effects$model_id[replacement_rows], effects$source_sheet[replacement_rows], sep = "\r"))
+  for (key in replacement_keys) {
+    index <- which(paste(effects$model_id, effects$source_sheet, sep = "\r") == key)
+    bases <- p3_unique_nonblank(effects$base_model_id[index])
+    if (length(bases) <= 1L) next
+    original_model_id <- effects$model_id[[index[[1]]]]
+    for (base in bases) {
+      base_index <- index[effects$base_model_id[index] == base]
+      suffix <- toupper(gsub("[^A-Za-z0-9]+", "_", base))
+      effects$model_id[base_index] <- paste0(original_model_id, "__REPLACES_", suffix)
+    }
+  }
+
+  effects
 }
 
 p3_standardize_effects <- function(tables) {
@@ -472,7 +688,7 @@ p3_standardize_effects <- function(tables) {
       effects$model_id[sheet_index] <- paste0(source_id, "__", suffix)
     }
   }
-  effects
+  p3_enrich_effect_metadata(effects, tables)
 }
 
 p3_standardize_manifest <- function(df, version) {
@@ -515,6 +731,8 @@ p3_combine_manifests <- function(tables, effects) {
       ,
       drop = FALSE
     ]
+    run_model <- any(p3_is_yes(d$analysis_include))
+    active <- if (run_model) d[p3_is_yes(d$analysis_include), , drop = FALSE] else d
     policy <- policies[policies$source_sheet == source_sheet, , drop = FALSE]
     if (nrow(policy) != 1L) {
       stop(
@@ -528,8 +746,8 @@ p3_combine_manifests <- function(tables, effects) {
       values <- p3_unique_nonblank(x)
       if (length(values) == 1L) values[[1]] else ""
     }
-    roles <- toupper(p3_unique_nonblank(d$analysis_role))
-    analysis_role <- if (isTRUE(d$descriptive_only[[1]])) {
+    roles <- toupper(p3_unique_nonblank(active$analysis_role))
+    analysis_role <- if (isTRUE(active$descriptive_only[[1]])) {
       "DESCRIPTIVE_MODULE"
     } else if (any(grepl("SENSIT|ROBUST|ALT", roles))) {
       "SENSITIVITY"
@@ -538,30 +756,44 @@ p3_combine_manifests <- function(tables, effects) {
     } else {
       "PRIMARY"
     }
-    base_model_id <- one_or_blank(d$base_model_id)
-    known_v_sheet <- if (grepl("A008", paste(d$row_text, collapse = " | "), ignore.case = TRUE)) {
+    base_model_id <- one_or_blank(active$base_model_id)
+    known_v_sheet <- if (grepl("A008", paste(active$row_text, collapse = " | "), ignore.case = TRUE)) {
       "V_Matrix_A008"
     } else {
       ""
     }
-    sensitivity_details <- p3_unique_nonblank(c(d$sensitivity_rule, policy$guardrail))
+    sensitivity_details <- p3_unique_nonblank(c(active$sensitivity_rule, policy$guardrail))
+    target_rows <- match(active$replacement_for, effects$effect_id)
+    target_outcomes <- rep("", nrow(active))
+    matched_targets <- !is.na(target_rows)
+    target_outcomes[matched_targets] <- effects$outcome[target_rows[matched_targets]]
+    alternative_outcome_replacement <- any(
+      nzchar(active$replacement_for) &
+        nzchar(active$outcome) &
+        nzchar(target_outcomes) &
+        tolower(active$outcome) != tolower(target_outcomes)
+    )
+    allow_mixed_outcome <- model_id %in% P3_FROZEN_MIXED_OUTCOME_MODELS ||
+      alternative_outcome_replacement
+    allow_mixed_pe_encoding <- model_id %in% P3_FROZEN_EQUIVALENT_PE_CODING_MODELS
 
     data.frame(
       model_id = model_id,
-      run_model = "Yes",
+      run_model = if (run_model) "Yes" else "No",
       analysis_role = analysis_role,
       source_sheet = source_sheet,
-      effect_scale = one_or_blank(d$effect_scale),
-      estimand = one_or_blank(d$estimand),
-      pe_encoding = one_or_blank(d$pe_encoding),
-      outcome = one_or_blank(d$outcome),
+      effect_scale = one_or_blank(active$effect_scale),
+      estimand = one_or_blank(active$estimand),
+      pe_encoding = one_or_blank(active$pe_encoding),
+      outcome = one_or_blank(active$outcome),
       model_type = policy$inference_plan[[1]],
       base_model_id = base_model_id,
       sensitivity_rule = paste(sensitivity_details, collapse = " | "),
       known_v_sheet = known_v_sheet,
-      allow_mixed_outcome = "No",
+      allow_mixed_outcome = if (allow_mixed_outcome) "Yes" else "No",
+      allow_mixed_pe_encoding = if (allow_mixed_pe_encoding) "Yes" else "No",
       critical = if (
-        !isTRUE(d$descriptive_only[[1]]) &&
+        run_model && !isTRUE(active$descriptive_only[[1]]) &&
           !grepl("SENSIT|ROBUST|ALT|GREY", analysis_role)
       ) "Yes" else "No",
       manifest_version = policy$manifest_version[[1]],
@@ -663,6 +895,20 @@ p3_matches_paradigm <- function(text, number) {
     text,
     ignore.case = TRUE
   )
+}
+
+p3_effect_matches_candidate <- function(effects, candidate_id) {
+  toupper(p3_text(effects$candidate_id)) == toupper(candidate_id) |
+    p3_matches_study(effects$row_text, candidate_id)
+}
+
+p3_effect_matches_experiment <- function(effects, number) {
+  p3_matches_experiment(effects$row_text, number) |
+    grepl(
+      paste0("EXPERIMENT[ _.:=-]*", number, "([^0-9]|$)"),
+      effects$dependency_cluster,
+      ignore.case = TRUE
+    )
 }
 
 p3_validate_input_qc <- function(tables, effects, manifest) {
@@ -867,10 +1113,16 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
   lock_ids <- p3_text(effect_lock[[lock_id_col]])
   lock_yes <- lock_ids[p3_is_yes(effect_lock[[lock_include_col]])]
   lock_no <- lock_ids[!p3_is_yes(effect_lock[[lock_include_col]]) & nzchar(lock_ids)]
-  missing_lock <- setdiff(included$effect_id, lock_yes)
+  inherited_source_lock <- grepl("^LOCKED", toupper(included$decision_status)) &
+    nzchar(included$direction_rule)
+  source_locked_ids <- included$effect_id[inherited_source_lock & !included$effect_id %in% lock_ids]
+  missing_lock <- setdiff(included$effect_id, c(lock_yes, source_locked_ids))
   excluded_lock_leak <- intersect(included$effect_id, lock_no)
   if (length(missing_lock) == 0L && length(excluded_lock_leak) == 0L) {
-    add(p3_qc_pass("Effect decision lock", "All included effects are explicitly locked Yes; no locked exclusion leaked"))
+    add(p3_qc_pass(
+      "Effect decision lock",
+      "All included effects are covered by the cumulative lock or a locked inherited module row; no exclusion leaked"
+    ))
   } else {
     add(p3_qc_fail(
       "Effect decision lock",
@@ -905,11 +1157,13 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
     add(p3_qc_fail("S023 Experiment 2 main-SMD exclusion", paste(sum(s023_exp2_main), "included records found")))
   }
 
-  analytical_s023_exp3 <- p3_matches_study(effects$row_text, "S023") &
-    p3_matches_experiment(effects$row_text, 3L)
-  quarantine_text <- p3_row_text(tables$Quarantined_Effects_v3_1)
-  quarantined_s023_exp3 <- p3_matches_study(quarantine_text, "S023") &
-    p3_matches_experiment(quarantine_text, 3L)
+  analytical_s023_exp3 <- p3_effect_matches_candidate(effects, "S023") &
+    p3_effect_matches_experiment(effects, 3L)
+  quarantine <- tables$Quarantined_Effects_v3_1
+  quarantine_candidate_col <- p3_find_column(quarantine, c("candidate_id"), TRUE, "Quarantined_Effects_v3_1")
+  quarantine_study_col <- p3_find_column(quarantine, c("study_id", "experiment_id"), TRUE, "Quarantined_Effects_v3_1")
+  quarantined_s023_exp3 <- toupper(p3_text(quarantine[[quarantine_candidate_col]])) == "S023" &
+    toupper(p3_text(quarantine[[quarantine_study_col]])) == "ST113"
   if (sum(analytical_s023_exp3) == 0L && sum(quarantined_s023_exp3) == 2L) {
     add(p3_qc_pass("S023 Experiment 3 quarantine", "2 quarantined records and 0 analytical records"))
   } else {
@@ -920,24 +1174,28 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
     ))
   }
 
-  s041 <- included[p3_matches_study(included$row_text, "S041"), , drop = FALSE]
+  s041 <- included[p3_effect_matches_candidate(included, "S041"), , drop = FALSE]
   s041_primary <- s041[grepl("PRIMARY", toupper(s041$analysis_role)), , drop = FALSE]
-  s041_p2_primary <- p3_matches_paradigm(s041_primary$row_text, 2L)
+  s041_sensitivity <- s041[grepl("SENSIT", toupper(s041$analysis_role)), , drop = FALSE]
   s041_primary_clusters <- unique(s041_primary$dependency_cluster[nzchar(s041_primary$dependency_cluster)])
-  if (nrow(s041_primary) > 0L && sum(s041_p2_primary) == 0L && length(s041_primary_clusters) == 1L) {
-    add(p3_qc_pass("S041 primary paradigm", "Paradigm 1 is the sole primary representative"))
+  s041_replacement_ok <- nrow(s041_primary) == 1L && nrow(s041_sensitivity) == 1L &&
+    identical(s041_sensitivity$replacement_for[[1]], s041_primary$effect_id[[1]]) &&
+    identical(s041_sensitivity$dependency_cluster[[1]], s041_primary$dependency_cluster[[1]])
+  if (length(s041_primary_clusters) == 1L && s041_replacement_ok) {
+    add(p3_qc_pass("S041 primary paradigm", "One primary representative; the second paradigm is a same-cluster replacement sensitivity"))
   } else {
     add(p3_qc_fail(
       "S041 primary paradigm",
-      paste0("Paradigm 2 primary rows=", sum(s041_p2_primary),
-             "; primary rows=", nrow(s041_primary),
-             "; primary independent clusters=", length(s041_primary_clusters))
+      paste0("primary rows=", nrow(s041_primary),
+             "; sensitivity rows=", nrow(s041_sensitivity),
+             "; primary independent clusters=", length(s041_primary_clusters),
+             "; replacement mapping valid=", s041_replacement_ok)
     ))
   }
 
   s016 <- included[
     included$source_sheet == "Main_Nonlinear_v3_1" &
-      p3_matches_study(included$row_text, "S016"),
+      p3_effect_matches_candidate(included, "S016"),
     , drop = FALSE
   ]
   s016_clusters <- unique(s016$dependency_cluster[nzchar(s016$dependency_cluster)])
@@ -960,9 +1218,9 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
     ))
   }
 
-  s023 <- included[p3_matches_study(included$row_text, "S023"), , drop = FALSE]
-  s023_exp1_recollection <- p3_matches_experiment(s023$row_text, 1L) &
-    grepl("RECOLLECT", s023$row_text, ignore.case = TRUE) &
+  s023 <- included[p3_effect_matches_candidate(included, "S023"), , drop = FALSE]
+  s023_exp1_recollection <- p3_effect_matches_experiment(s023, 1L) &
+    grepl("RECOLLECT", s023$outcome, ignore.case = TRUE) &
     grepl("PRIMARY", toupper(s023$analysis_role))
   if (sum(s023_exp1_recollection) >= 1L) {
     add(p3_qc_pass("S023 Experiment 1 primary outcome", "Recollection is present as the primary outcome"))
@@ -970,8 +1228,8 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
     add(p3_qc_fail("S023 Experiment 1 primary outcome", "No primary Experiment 1 recollection record found"))
   }
 
-  s023_exp2 <- s023[p3_matches_experiment(s023$row_text, 2L), , drop = FALSE]
-  s023_exp2_ok <- nrow(s023_exp2) == 0L || all(grepl("SENSIT", toupper(s023_exp2$analysis_role)))
+  s023_exp2 <- s023[p3_effect_matches_experiment(s023, 2L), , drop = FALSE]
+  s023_exp2_ok <- nrow(s023_exp2) > 0L && all(grepl("SENSIT", toupper(s023_exp2$analysis_role)))
   if (s023_exp2_ok) {
     add(p3_qc_pass("S023 Experiment 2 role", paste(nrow(s023_exp2), "sensitivity-only records")))
   } else {
@@ -979,13 +1237,13 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
   }
 
   familiarity <- included[
-    p3_matches_study(included$row_text, "S023") &
-      grepl("FAMILIAR", included$row_text, ignore.case = TRUE),
+    p3_effect_matches_candidate(included, "S023") &
+      grepl("FAMILIAR", included$outcome, ignore.case = TRUE),
     , drop = FALSE
   ]
   recollection <- included[
-    p3_matches_study(included$row_text, "S023") &
-      grepl("RECOLLECT", included$row_text, ignore.case = TRUE),
+    p3_effect_matches_candidate(included, "S023") &
+      grepl("RECOLLECT", included$outcome, ignore.case = TRUE),
     , drop = FALSE
   ]
   familiarity_ok <- nrow(familiarity) == 0L || (
@@ -1000,7 +1258,7 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
   }
 
   s040 <- included[
-    p3_matches_study(included$row_text, "S040") &
+    p3_effect_matches_candidate(included, "S040") &
       grepl("PRIMARY", toupper(included$analysis_role)),
     , drop = FALSE
   ]
@@ -1016,25 +1274,58 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
     ))
   }
 
-  replacement_patterns <- list(
-    "S041 Paradigm 2" = p3_matches_study(included$row_text, "S041") & p3_matches_paradigm(included$row_text, 2L),
-    "S010 N=71 subset" = p3_matches_study(included$row_text, "S010") & grepl("N[ =]*71|PUBLIC SUBSET", included$row_text, ignore.case = TRUE),
-    "S021 N=35 subgroup" = p3_matches_study(included$row_text, "S021") & grepl("N[ =]*35|YOUNG", included$row_text, ignore.case = TRUE),
-    "Boundary/alternative rows" = grepl("BOUNDARY.EXCLUD|ALTERNATIVE MODEL|ALTERNATIVE OUTCOME", included$row_text, ignore.case = TRUE)
+  standalone_sensitivity_patterns <- list(
+    "S010 N=71 subset" = p3_effect_matches_candidate(included, "S010") &
+      grepl("N[ =]*71|PUBLIC[ _-]*SUBSET", included$row_text, ignore.case = TRUE),
+    "S021 N=35 subgroup" = p3_effect_matches_candidate(included, "S021") &
+      grepl("N[ =]*35|YOUNG", included$row_text, ignore.case = TRUE)
   )
-  for (label in names(replacement_patterns)) {
-    rows <- included[replacement_patterns[[label]], , drop = FALSE]
-    ok <- nrow(rows) == 0L || all(
-      grepl("SENSIT", toupper(rows$analysis_role)) & nzchar(rows$replacement_for)
-    )
+  for (label in names(standalone_sensitivity_patterns)) {
+    rows <- included[standalone_sensitivity_patterns[[label]], , drop = FALSE]
+    ok <- nrow(rows) == 1L &&
+      all(grepl("SENSIT", toupper(rows$analysis_role))) &&
+      all(!nzchar(rows$replacement_for))
     if (ok) {
-      add(p3_qc_pass(paste0("Replacement rule: ", label), paste(nrow(rows), "eligible replacement records")))
+      add(p3_qc_pass(
+        paste0("Sensitivity-only rule: ", label),
+        "One sensitivity-only record; it does not replace the unavailable/prespecified main estimate"
+      ))
     } else {
       add(p3_qc_fail(
-        paste0("Replacement rule: ", label),
-        paste("Rows must be sensitivity replacements:", paste(rows$effect_id, collapse = ", "))
+        paste0("Sensitivity-only rule: ", label),
+        paste0(
+          "Expected exactly one standalone sensitivity record with no replacement target; found rows=",
+          nrow(rows), "; IDs=", paste(rows$effect_id, collapse = ", ")
+        )
       ))
     }
+  }
+
+  boundary_alternatives <- included[
+    grepl(
+      "BOUNDARY.EXCLUD|ALTERNATIVE[_ ](MODEL|OUTCOME)",
+      paste(included$decision_status, included$row_text),
+      ignore.case = TRUE
+    ),
+    , drop = FALSE
+  ]
+  boundary_ok <- nrow(boundary_alternatives) == 0L || all(
+    grepl("SENSIT|ROBUST|ALTERNATIVE", toupper(boundary_alternatives$analysis_role)) &
+      nzchar(boundary_alternatives$replacement_for)
+  )
+  if (boundary_ok) {
+    add(p3_qc_pass(
+      "Replacement rule: Boundary/alternative rows",
+      paste(nrow(boundary_alternatives), "same-sample replacement records")
+    ))
+  } else {
+    add(p3_qc_fail(
+      "Replacement rule: Boundary/alternative rows",
+      paste(
+        "Rows must be same-sample sensitivity/robustness replacements:",
+        paste(boundary_alternatives$effect_id, collapse = ", ")
+      )
+    ))
   }
 
   direction <- tables$Direction_Audit_v3_1
@@ -1047,11 +1338,24 @@ p3_validate_input_qc <- function(tables, effects, manifest) {
   direction_ids <- p3_text(direction[[direction_id_col]])
   direction_status <- p3_direction_audit_status(direction)
   allowed_direction_status <- direction_status %in% c(
-    "PASS", "LOCKED", "APPROVED", "VERIFIED", "DIRECTION_LOCKED"
+    "PASS", "LOCKED", "APPROVED", "VERIFIED", "DIRECTION_LOCKED",
+    "CHECKED", "CHECKED_V3_1"
   )
-  missing_direction <- setdiff(included$effect_id, direction_ids[allowed_direction_status])
+  raw_effect_ids <- p3_text(raw[[raw_id_col]])
+  current_ids <- intersect(included$effect_id, raw_effect_ids)
+  inherited_ids <- setdiff(included$effect_id, raw_effect_ids)
+  missing_current_direction <- setdiff(current_ids, direction_ids[allowed_direction_status])
+  inherited_rows <- included[match(inherited_ids, included$effect_id), , drop = FALSE]
+  missing_inherited_direction <- inherited_rows$effect_id[!nzchar(inherited_rows$direction_rule)]
+  missing_direction <- unique(c(missing_current_direction, missing_inherited_direction))
   if (length(missing_direction) == 0L) {
-    add(p3_qc_pass("Direction audit coverage", "All included effects have a locked/approved direction audit"))
+    add(p3_qc_pass(
+      "Direction audit coverage",
+      paste0(
+        length(current_ids), " current effects have CHECKED/approved v3.1 audits; ",
+        length(inherited_ids), " inherited effects retain a non-empty locked source direction rule"
+      )
+    ))
   } else {
     add(p3_qc_fail(
       "Direction audit coverage",
@@ -1152,7 +1456,10 @@ p3_check_compatibility <- function(d, spec) {
   for (field in fields) {
     values <- p3_unique_nonblank(d[[field]])
     expected <- p3_text(spec[[field]])
-    if (length(values) > 1L) {
+    equivalent_pe_labels <- identical(field, "pe_encoding") &&
+      "allow_mixed_pe_encoding" %in% names(spec) &&
+      p3_is_yes(spec$allow_mixed_pe_encoding)
+    if (length(values) > 1L && !equivalent_pe_labels) {
       problems <- c(problems, paste0(field, " mixes ", paste(values, collapse = " / ")))
     } else if (nzchar(expected) && length(values) == 1L && !identical(tolower(values), tolower(expected))) {
       problems <- c(problems, paste0(field, " does not match manifest"))
@@ -2409,6 +2716,7 @@ p3_synthetic_spec <- function(
     sensitivity_rule = "",
     known_v_sheet = known_v_sheet,
     allow_mixed_outcome = "No",
+    allow_mixed_pe_encoding = "No",
     critical = "Yes",
     manifest_version = "synthetic",
     stringsAsFactors = FALSE
@@ -2419,6 +2727,7 @@ p3_synthetic_effects <- function(ids, clusters, model_id, yi, vi) {
   n <- length(ids)
   data.frame(
     effect_id = ids,
+    candidate_id = "",
     article_id = paste0("R", seq_len(n)),
     study_id = paste0("SYN", seq_len(n)),
     sample_id = clusters,
@@ -2441,9 +2750,14 @@ p3_synthetic_effects <- function(ids, clusters, model_id, yi, vi) {
     analysis_role = "PRIMARY",
     analysis_include = "Yes",
     decision_status = "LOCKED_SYNTHETIC",
+    direction_rule = "Synthetic locked direction",
+    direction_status = "LOCKED",
+    source_version = "synthetic",
     dependency_cluster = clusters,
+    source_dependency_cluster = clusters,
     shared_control_block = "",
     replacement_for = "",
+    source_replacement_for = "",
     sensitivity_rule = "",
     paradigm = "",
     experiment = "",
